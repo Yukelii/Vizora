@@ -1,0 +1,30 @@
+@{
+    ViewData["Title"] = "Check Your Email";
+    var statusMessage = ViewData["StatusMessage"]?.ToString();
+}
+
+<h1 class="mb-4">Check Your Email</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <p class="text-muted">
+                    We sent a confirmation email. Confirm your account before signing in.
+                </p>
+
+                @if (!string.IsNullOrWhiteSpace(statusMessage))
+                {
+                    <div class="alert alert-info" role="alert">
+                        @statusMessage
+                    </div>
+                }
+
+                <form asp-action="ResendConfirmationEmail" method="post">
+                    <button type="submit" class="btn btn-primary">Resend Confirmation Email</button>
+                    <a asp-action="Login" class="btn btn-secondary">Back to Login</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

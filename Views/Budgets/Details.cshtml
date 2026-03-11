@@ -1,0 +1,33 @@
+@model Vizora.Models.BudgetPerformanceViewModel
+
+@{
+    ViewData["Title"] = "Budget Details";
+    var isModalRequest = string.Equals(
+        Context.Request.Headers["X-Requested-With"],
+        "XMLHttpRequest",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (isModalRequest)
+    {
+        Layout = null;
+    }
+}
+
+@if (isModalRequest)
+{
+    <partial name="_DetailsModal" model="Model" />
+}
+else
+{
+    <h1>Budget Details</h1>
+
+    <hr />
+    <div class="row">
+        <div class="col-md-7">
+            <partial name="_DetailsModal" model="Model" />
+            <div class="mt-3">
+                <a asp-action="Index" class="btn btn-outline-secondary">Back to List</a>
+            </div>
+        </div>
+    </div>
+}

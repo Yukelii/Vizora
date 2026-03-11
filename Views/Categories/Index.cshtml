@@ -1,0 +1,78 @@
+@model IEnumerable<Vizora.Models.Category>
+
+@{
+    ViewData["Title"] = "Categories";
+}
+
+<h1>Categories</h1>
+
+<p>
+    <a asp-action="Create"
+       class="btn btn-primary"
+       data-modal="true"
+       data-modal-title="Create Category">Create Category</a>
+</p>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model)
+{
+        <tr>
+            <td>@item.Name</td>
+            <td>@item.Type</td>
+            <td>@item.CreatedAt.ToString("yyyy-MM-dd")</td>
+            <td>
+                <div class="vz-action-icons">
+                    <a asp-action="Details"
+                       asp-route-id="@item.Id"
+                       data-modal="true"
+                       data-modal-title="Category Details"
+                       class="vz-action-icon vz-action-view"
+                       title="Details"
+                       aria-label="Details">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                            <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
+                        </svg>
+                    </a>
+                    <a asp-action="Edit"
+                       asp-route-id="@item.Id"
+                       data-modal="true"
+                       data-modal-title="Edit Category"
+                       class="vz-action-icon vz-action-edit"
+                       title="Edit"
+                       aria-label="Edit">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
+                            <path d="M16 7l3 3"></path>
+                        </svg>
+                    </a>
+                    <a asp-action="Delete"
+                       asp-route-id="@item.Id"
+                       data-modal="true"
+                       data-modal-title="Delete Category"
+                       class="vz-action-icon vz-action-delete"
+                       title="Delete"
+                       aria-label="Delete">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M4 7h16"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                            <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"></path>
+                            <path d="M9 7l1 -3h4l1 3"></path>
+                        </svg>
+                    </a>
+                </div>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>

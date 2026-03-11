@@ -1,0 +1,28 @@
+@model Vizora.Models.BudgetPerformanceViewModel
+
+<h3 class="h5">Are you sure you want to delete this budget?</h3>
+
+<dl class="row mb-4">
+    <dt class="col-sm-4">Category</dt>
+    <dd class="col-sm-8">@Model.CategoryName</dd>
+
+    <dt class="col-sm-4">Period Type</dt>
+    <dd class="col-sm-8">@Model.PeriodType</dd>
+
+    <dt class="col-sm-4">Date Range</dt>
+    <dd class="col-sm-8">@Model.StartDate.ToString("yyyy-MM-dd") - @Model.EndDate.ToString("yyyy-MM-dd")</dd>
+
+    <dt class="col-sm-4">Planned Amount</dt>
+    <dd class="col-sm-8">PHP @Model.PlannedAmount.ToString("N2")</dd>
+
+    <dt class="col-sm-4">Actual Spending</dt>
+    <dd class="col-sm-8">PHP @Model.ActualSpending.ToString("N2")</dd>
+</dl>
+
+<form asp-action="Delete" method="post">
+    <input type="hidden" name="id" value="@Model.BudgetId" />
+    <div class="d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-danger">Delete</button>
+        <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+    </div>
+</form>

@@ -1,0 +1,348 @@
+@model Vizora.Models.DashboardViewModel
+@using System.Text.Json
+
+@{
+    ViewData["Title"] = "Dashboard";
+
+    var hasCustomRange = Model.StartDate.HasValue || Model.EndDate.HasValue;
+    var selectedFilterValue = hasCustomRange
+        ? "custom"
+        : (string.IsNullOrWhiteSpace(Model.SelectedFilter) ? "all" : Model.SelectedFilter);
+
+    var activeFilterText = hasCustomRange
+        ? $"Custom Range: {(Model.StartDate?.ToString("MMM dd, yyyy") ?? "Any")} - {(Model.EndDate?.ToString("MMM dd, yyyy") ?? "Any")}"
+        : selectedFilterValue switch
+        {
+            "7days" => "Last 7 Days",
+            "30days" => "Last 30 Days",
+            "month" => "This Month",
+            "year" => "This Year",
+            _ => "All Time"
+        };
+
+    var netMetricClass = Model.NetCashFlow >= 0 ? "vz-metric-positive" : "vz-metric-negative";
+
+    var chartDataJson = JsonSerializer.Serialize(new
+    {
+        SpendingByCategory = new
+        {
+            Labels = Model.SpendingByCategoryLabels,
+            Amounts = Model.SpendingByCategoryAmounts
+        },
+        IncomeVsExpense = new
+        {
+            Labels = Model.MonthlyLabels,
+            Income = Model.MonthlyIncomeData,
+            Expense = Model.MonthlyExpenseData
+        }
+    });
+}
+
+<section class="vz-content">
+        <header class="vz-content-header">
+            <div>
+                <p class="vz-content-kicker">Overview</p>
+                <h1>Financial Dashboard</h1>
+            </div>
+            <span class="vz-filter-pill">@activeFilterText</span>
+        </header>
+
+        <form method="get" asp-controller="Dashboard" asp-action="Index" id="dashboardFilterForm" class="vz-filter-form">
+            <div class="vz-filter-field">
+                <label for="filter" class="form-label">Quick Filter</label>
+                <select id="filter" name="filter" class="form-select">
+                    <option value="all" selected="@(selectedFilterValue == "all")">All Time</option>
+                    <option value="7days" selected="@(selectedFilterValue == "7days")">Last 7 Days</option>
+                    <option value="30days" selected="@(selectedFilterValue == "30days")">Last 30 Days</option>
+                    <option value="month" selected="@(selectedFilterValue == "month")">This Month</option>
+                    <option value="year" selected="@(selectedFilterValue == "year")">This Year</option>
+                    <option value="custom" selected="@(selectedFilterValue == "custom")">Custom Range</option>
+                </select>
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="startDate" class="form-label">Start Date</label>
+                <input type="date"
+                       id="startDate"
+                       name="startDate"
+                       class="form-control"
+                       value="@(Model.StartDate?.ToString("yyyy-MM-dd"))" />
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="endDate" class="form-label">End Date</label>
+                <input type="date"
+                       id="endDate"
+                       name="endDate"
+                       class="form-control"
+                       value="@(Model.EndDate?.ToString("yyyy-MM-dd"))" />
+            </div>
+
+            <div class="vz-filter-actions">
+                <button type="submit" class="btn btn-primary">Apply</button>
+                <a asp-controller="Dashboard" asp-action="Index" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+
+        <section class="vz-metrics-grid" aria-label="Key financial metrics">
+            <article class="vz-metric-card vz-metric-income">
+                <p class="vz-metric-label">Total Income</p>
+                <h2>PHP @Model.TotalIncome.ToString("N2")</h2>
+            </article>
+
+            <article class="vz-metric-card vz-metric-expense">
+                <p class="vz-metric-label">Total Expense</p>
+                <h2>PHP @Model.TotalExpense.ToString("N2")</h2>
+            </article>
+
+            <article class="vz-metric-card @netMetricClass">
+                <p class="vz-metric-label">Net Cash Flow</p>
+                <h2>PHP @Model.NetCashFlow.ToString("N2")</h2>
+            </article>
+
+            <article class="vz-metric-card vz-metric-transactions">
+                <p class="vz-metric-label">Transactions</p>
+                <h2>@Model.TotalTransactions</h2>
+            </article>
+        </section>
+
+        <section class="vz-panel">
+            <div class="vz-panel-head">
+                <h2>Financial Insights</h2>
+            </div>
+
+            @if (Model.Insights.Any())
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var insight in Model.Insights)
+                    {
+                        var severityBadgeClass = insight.Severity.ToString() switch
+                        {
+                            "Alert" => "bg-danger",
+                            "Warning" => "bg-warning text-dark",
+                            _ => "bg-info text-dark"
+                        };
+
+                        <li class="list-group-item d-flex justify-content-between align-items-start">
+                            <div class="me-3">
+                                <div class="fw-semibold">@insight.Title</div>
+                                <div class="small text-muted">@insight.Description</div>
+                            </div>
+                            <span class="badge @severityBadgeClass">@insight.Severity</span>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="vz-empty">No insights available for your data yet.</p>
+            }
+        </section>
+
+        <section class="vz-chart-grid">
+            <article class="vz-panel">
+                <div class="vz-panel-head">
+                    <h2>Income vs Expense Trend</h2>
+                </div>
+
+                @if (Model.MonthlyLabels.Any())
+                {
+                    <canvas id="incomeExpenseChart" aria-label="Income versus expense trend chart"></canvas>
+                }
+                else
+                {
+                    <p class="vz-empty">No trend data for the selected range.</p>
+                }
+            </article>
+
+            <article class="vz-panel">
+                <div class="vz-panel-head">
+                    <h2>Spending by Category</h2>
+                </div>
+
+                @if (Model.SpendingByCategoryLabels.Any())
+                {
+                    <canvas id="spendingByCategoryChart" aria-label="Spending by category chart"></canvas>
+                }
+                else
+                {
+                    <p class="vz-empty">No expense transactions for the selected range.</p>
+                }
+            </article>
+        </section>
+
+        <section class="vz-panel">
+            <div class="vz-panel-head">
+                <h2>Budget vs Actual</h2>
+            </div>
+
+            @if (Model.BudgetProgress.Any())
+            {
+                @foreach (var budget in Model.BudgetProgress)
+                {
+                    var progressWidth = Math.Clamp(budget.PercentageUsed, 0m, 100m);
+                    var progressClass = budget.PercentageUsed > 100m
+                        ? "bg-danger"
+                        : budget.PercentageUsed >= 80m
+                            ? "bg-warning text-dark"
+                            : "bg-success";
+
+                    <article class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>@budget.CategoryName</strong>
+                            <span class="small text-muted">
+                                PHP @budget.ActualSpent.ToString("N2") / PHP @budget.BudgetAmount.ToString("N2")
+                            </span>
+                        </div>
+
+                        <div class="progress mt-2" role="progressbar" aria-label="@($"{budget.CategoryName} budget usage")">
+                            <div class="progress-bar @progressClass"
+                                 style="width: @progressWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%;">
+                                @budget.PercentageUsed.ToString("0.##")%
+                            </div>
+                        </div>
+
+                        <div class="mt-1 small @(budget.RemainingAmount >= 0m ? "text-success" : "text-danger")">
+                            Remaining: PHP @budget.RemainingAmount.ToString("N2")
+                        </div>
+                    </article>
+                }
+            }
+            else
+            {
+                <p class="vz-empty">No budgets available for the selected range.</p>
+            }
+        </section>
+
+        <section class="vz-data-grid">
+            <article class="vz-panel">
+                <div class="vz-panel-head">
+                    <h2>Top Spending Categories</h2>
+                </div>
+
+                @if (Model.TopSpendingCategories.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle vz-table">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Total Spent</th>
+                                    <th>Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var category in Model.TopSpendingCategories)
+                                {
+                                    <tr>
+                                        <td>@category.CategoryName</td>
+                                        <td>PHP @category.TotalAmount.ToString("N2")</td>
+                                        <td>@category.TransactionCount</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="vz-empty">No category spending data for the selected range.</p>
+                }
+            </article>
+
+            <article class="vz-panel">
+                <div class="vz-panel-head">
+                    <h2>Monthly Summary</h2>
+                </div>
+
+                @if (Model.MonthlySummaries.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle vz-table">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th>Income</th>
+                                    <th>Expense</th>
+                                    <th>Net</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var month in Model.MonthlySummaries)
+                                {
+                                    <tr>
+                                        <td>@month.MonthLabel</td>
+                                        <td>PHP @month.Income.ToString("N2")</td>
+                                        <td>PHP @month.Expense.ToString("N2")</td>
+                                        <td class="@(month.Net >= 0 ? "text-success" : "text-danger")">
+                                            PHP @month.Net.ToString("N2")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="vz-empty">No monthly summary available.</p>
+                }
+            </article>
+
+            <article class="vz-panel">
+                <div class="vz-panel-head">
+                    <h2>Recent Transactions</h2>
+                </div>
+
+                @if (Model.RecentTransactions.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle vz-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Category</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var transaction in Model.RecentTransactions)
+                                {
+                                    <tr>
+                                        <td>
+                                            <a asp-controller="Transactions"
+                                               asp-action="Details"
+                                               asp-route-id="@transaction.TransactionId"
+                                               class="vz-link">
+                                                #@transaction.TransactionId
+                                            </a>
+                                        </td>
+                                        <td>@transaction.CategoryName</td>
+                                        <td>
+                                            <span class="badge @(transaction.Type == TransactionType.Income ? "bg-success" : "bg-danger")">
+                                                @transaction.Type
+                                            </span>
+                                        </td>
+                                        <td>PHP @transaction.Amount.ToString("N2")</td>
+                                        <td>@transaction.TransactionDate.ToString("yyyy-MM-dd")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="vz-empty">No recent transactions.</p>
+                }
+            </article>
+        </section>
+</section>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script id="dashboard-chart-data" type="application/json">@Html.Raw(chartDataJson)</script>
+    <script src="~/js/dashboard-charts.js" asp-append-version="true"></script>
+}

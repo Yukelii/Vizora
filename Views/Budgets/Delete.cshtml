@@ -1,0 +1,32 @@
+@model Vizora.Models.BudgetPerformanceViewModel
+
+@{
+    ViewData["Title"] = "Delete Budget";
+    var isModalRequest = string.Equals(
+        Context.Request.Headers["X-Requested-With"],
+        "XMLHttpRequest",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (isModalRequest)
+    {
+        Layout = null;
+    }
+}
+
+@if (isModalRequest)
+{
+    <partial name="_DeleteConfirm" model="Model" />
+}
+else
+{
+    <h1>Delete Budget</h1>
+    <hr />
+    <div class="row">
+        <div class="col-md-7">
+            <partial name="_DeleteConfirm" model="Model" />
+            <div class="mt-3">
+                <a asp-action="Index" class="btn btn-outline-secondary">Back to List</a>
+            </div>
+        </div>
+    </div>
+}

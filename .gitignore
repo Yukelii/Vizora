@@ -1,0 +1,23 @@
+# AI / Codex documentation
+AGENTS.md
+docs/
+skills/
+CODEX_INSTRUCTIONS.md
+appsettings.json
+appsettings.Development.json
+# packaged skills
+*.zip
+
+# local environment secrets
+.env
+.env.*
+
+
+# .NET build outputs
+bin/
+obj/
+
+# codex local build artifacts
+.codex-build-out/
+.codex-build-out-ownfk/
+

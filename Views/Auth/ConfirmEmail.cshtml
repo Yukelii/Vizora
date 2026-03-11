@@ -1,0 +1,14 @@
+@{
+    ViewData["Title"] = "Confirm Email";
+    var statusMessage = ViewData["StatusMessage"]?.ToString() ?? "Email confirmation status is unavailable.";
+}
+
+<h1 class="mb-4">Confirm Email</h1>
+
+<div class="alert alert-info" role="alert">
+    @statusMessage
+</div>
+
+<p>
+    <a asp-action="Login" class="btn btn-primary">Go to Login</a>
+</p>

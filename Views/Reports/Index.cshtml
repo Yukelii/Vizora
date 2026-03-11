@@ -1,0 +1,18 @@
+@{
+    ViewData["Title"] = "Reports";
+}
+
+<h1 class="mb-4">Reports</h1>
+
+<div class="card">
+    <div class="card-body">
+        <h4 class="card-title">Transaction Export</h4>
+        <p class="card-text">
+            Download a CSV file containing your user-scoped transactions for external analysis.
+        </p>
+
+        <a asp-controller="Reports" asp-action="ExportTransactionsCsv" class="btn btn-success">
+            Export Transactions CSV
+        </a>
+    </div>
+</div>

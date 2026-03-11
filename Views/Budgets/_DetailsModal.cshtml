@@ -1,0 +1,40 @@
+@model Vizora.Models.BudgetPerformanceViewModel
+
+<div>
+    <dl class="row mb-4">
+        <dt class="col-sm-4">Category</dt>
+        <dd class="col-sm-8">@Model.CategoryName</dd>
+
+        <dt class="col-sm-4">Period Type</dt>
+        <dd class="col-sm-8">@Model.PeriodType</dd>
+
+        <dt class="col-sm-4">Start Date</dt>
+        <dd class="col-sm-8">@Model.StartDate.ToString("yyyy-MM-dd")</dd>
+
+        <dt class="col-sm-4">End Date</dt>
+        <dd class="col-sm-8">@Model.EndDate.ToString("yyyy-MM-dd")</dd>
+
+        <dt class="col-sm-4">Planned Amount</dt>
+        <dd class="col-sm-8">PHP @Model.PlannedAmount.ToString("N2")</dd>
+
+        <dt class="col-sm-4">Actual Spending</dt>
+        <dd class="col-sm-8">PHP @Model.ActualSpending.ToString("N2")</dd>
+
+        <dt class="col-sm-4">Remaining</dt>
+        <dd class="col-sm-8 @(Model.RemainingAmount >= 0 ? "text-success" : "text-danger")">
+            PHP @Model.RemainingAmount.ToString("N2")
+        </dd>
+
+        <dt class="col-sm-4">Usage</dt>
+        <dd class="col-sm-8">@Model.UsagePercent.ToString("N2")%</dd>
+    </dl>
+
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="Edit"
+           asp-route-id="@Model.BudgetId"
+           class="btn btn-primary"
+           data-modal="true"
+           data-modal-title="Edit Budget">Edit</a>
+        <button type="button" class="btn btn-outline-secondary" data-modal-close="true">Close</button>
+    </div>
+</div>

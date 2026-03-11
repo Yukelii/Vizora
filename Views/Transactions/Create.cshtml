@@ -1,0 +1,30 @@
+@model Vizora.Models.TransactionUpsertViewModel
+
+@{
+    ViewData["Title"] = "Create Transaction";
+    var isModalRequest = string.Equals(
+        Context.Request.Headers["X-Requested-With"],
+        "XMLHttpRequest",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (isModalRequest)
+    {
+        Layout = null;
+    }
+}
+
+@if (isModalRequest)
+{
+    <partial name="_CreateForm" model="Model" />
+}
+else
+{
+    <h1>Create Transaction</h1>
+
+    <hr />
+    <div class="row">
+        <div class="col-md-6">
+            <partial name="_CreateForm" model="Model" />
+        </div>
+    </div>
+}

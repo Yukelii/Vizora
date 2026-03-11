@@ -1,0 +1,30 @@
+@model Vizora.Models.CategoryUpsertViewModel
+
+@{
+    ViewData["Title"] = "Create Category";
+    var isModalRequest = string.Equals(
+        Context.Request.Headers["X-Requested-With"],
+        "XMLHttpRequest",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (isModalRequest)
+    {
+        Layout = null;
+    }
+}
+
+@if (isModalRequest)
+{
+    <partial name="_CreateForm" model="Model" />
+}
+else
+{
+    <h1>Create Category</h1>
+
+    <hr />
+    <div class="row">
+        <div class="col-md-4">
+            <partial name="_CreateForm" model="Model" />
+        </div>
+    </div>
+}

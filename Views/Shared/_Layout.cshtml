@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Vizora</title>
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/vizora-dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/vizora.styles.css" asp-append-version="true" />
+</head>
+<body class="@(User.Identity?.IsAuthenticated == true ? "vz-auth-layout" : string.Empty)">
+    @{
+        var isAuthenticated = User.Identity?.IsAuthenticated == true;
+        var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+    }
+
+    @if (isAuthenticated)
+    {
+        <div class="container-fluid px-0">
+            <div class="vz-dashboard-shell">
+                <aside class="vz-sidebar">
+                    <div class="vz-brand">
+                        <p class="vz-brand-kicker">Vizora</p>
+                        <h2>Personal Finance</h2>
+                        <span>Analytics Workspace</span>
+                    </div>
+
+                    <nav class="vz-sidebar-nav" aria-label="Main navigation">
+                        <a class="vz-nav-link @(currentController == "Dashboard" ? "active" : string.Empty)"
+                           asp-controller="Dashboard"
+                           asp-action="Index">Dashboard</a>
+                        <a class="vz-nav-link @(currentController == "Transactions" ? "active" : string.Empty)"
+                           asp-controller="Transactions"
+                           asp-action="Index">Transactions</a>
+                        <a class="vz-nav-link @(currentController == "Categories" ? "active" : string.Empty)"
+                           asp-controller="Categories"
+                           asp-action="Index">Categories</a>
+                        <a class="vz-nav-link @(currentController == "Budgets" ? "active" : string.Empty)"
+                           asp-controller="Budgets"
+                           asp-action="Index">Budgets</a>
+                        <a class="vz-nav-link @(currentController == "Reports" ? "active" : string.Empty)"
+                           asp-controller="Reports"
+                           asp-action="Index">Reports</a>
+                        <a class="vz-nav-link @(currentController == "Settings" ? "active" : string.Empty)"
+                           asp-controller="Settings"
+                           asp-action="Index">Settings</a>
+                    </nav>
+
+                    <div class="vz-sidebar-user">
+                        <p class="vz-sidebar-user-label">Logged in as</p>
+                        <p class="vz-sidebar-user-name">@User.Identity?.Name</p>
+                        <form asp-controller="Auth" asp-action="Logout" method="post" class="vz-logout-form">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">Logout</button>
+                        </form>
+                    </div>
+                </aside>
+
+                <main role="main" class="vz-main">
+                    @RenderBody()
+                </main>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="container">
+            <main role="main" class="pb-3">
+                @RenderBody()
+            </main>
+        </div>
+    }
+
+    <div class="modal fade"
+         id="appModal"
+         tabindex="-1"
+         aria-hidden="true"
+         aria-labelledby="appModalLabel">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="appModalLabel">Create</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="appModalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - Vizora - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
+    <script src="~/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/modal-forms.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

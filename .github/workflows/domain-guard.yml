@@ -1,0 +1,17 @@
+name: Domain Guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  domain-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Domain Guard
+        run: |
+          chmod +x scripts/domain-guard.sh
+          scripts/domain-guard.sh

@@ -1,0 +1,294 @@
+@model Vizora.Models.TransactionsIndexViewModel
+
+@{
+    ViewData["Title"] = "Transactions";
+    var transactions = Model.Transactions?.ToList() ?? new List<Vizora.Models.Transaction>();
+    var startDateValue = Model.StartDate?.ToString("yyyy-MM-dd");
+    var endDateValue = Model.EndDate?.ToString("yyyy-MM-dd");
+    var minAmountValue = Model.MinAmount?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    var maxAmountValue = Model.MaxAmount?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    var firstPage = Math.Max(1, Model.Page - 2);
+    var lastPage = Math.Min(Model.TotalPages, Model.Page + 2);
+}
+
+<section class="vz-content">
+    <header class="vz-content-header">
+        <div>
+            <p class="vz-content-kicker">Records</p>
+            <h1>Transactions</h1>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a asp-action="Create"
+               class="btn btn-primary"
+               data-modal="true"
+               data-modal-title="Add Transaction">Add Transaction</a>
+
+            <form asp-action="Import"
+                  method="post"
+                  enctype="multipart/form-data"
+                  class="d-flex flex-wrap align-items-center gap-2">
+                <input type="file"
+                       name="csvFile"
+                       accept=".csv,text/csv"
+                       class="form-control form-control-sm"
+                       aria-label="Select CSV file to import"
+                       required />
+                <button type="submit" class="btn btn-outline-primary btn-sm">Import CSV</button>
+            </form>
+        </div>
+    </header>
+
+    @if (TempData["ImportSummary"] is string importSummary)
+    {
+        <section class="vz-panel">
+            <div class="alert alert-success mb-0" role="status">@importSummary</div>
+            @if (TempData["ImportErrors"] is string importErrors)
+            {
+                <div class="alert alert-warning mt-2 mb-0" role="status">@importErrors</div>
+            }
+        </section>
+    }
+    else if (TempData["ImportError"] is string importError)
+    {
+        <section class="vz-panel">
+            <div class="alert alert-danger mb-0" role="alert">@importError</div>
+        </section>
+    }
+
+    <section class="vz-panel">
+        <form class="vz-transactions-filter" method="get" asp-action="Index">
+            <div class="vz-filter-field">
+                <label for="transactionSearch" class="form-label">Search transactions</label>
+                <input id="transactionSearch"
+                       name="search"
+                       type="search"
+                       class="form-control"
+                       value="@Model.Search"
+                       placeholder="Search by description, amount, or category" />
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="categoryFilter" class="form-label">Category</label>
+                <select id="categoryFilter" name="category" class="form-select">
+                    <option value="">All Categories</option>
+                    @foreach (var category in Model.CategoryOptions)
+                    {
+                        <option value="@category.Id" selected="@(Model.Category == category.Id)">
+                            @category.Name
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="minAmount" class="form-label">Min Amount</label>
+                <input id="minAmount"
+                       name="minAmount"
+                       type="number"
+                       min="0.01"
+                       step="0.01"
+                       class="form-control"
+                       value="@minAmountValue" />
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="maxAmount" class="form-label">Max Amount</label>
+                <input id="maxAmount"
+                       name="maxAmount"
+                       type="number"
+                       min="0.01"
+                       step="0.01"
+                       class="form-control"
+                       value="@maxAmountValue" />
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="pageSize" class="form-label">Page Size</label>
+                <select id="pageSize" name="pageSize" class="form-select">
+                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                </select>
+            </div>
+
+            <div class="vz-filter-field">
+                <label for="startDate" class="form-label">Date Range</label>
+                <div class="vz-range-fields">
+                    <input id="startDate" name="startDate" type="date" class="form-control" value="@startDateValue" />
+                    <input id="endDate" name="endDate" type="date" class="form-control" value="@endDateValue" />
+                </div>
+            </div>
+
+            <input type="hidden" name="page" value="1" />
+
+            <div class="vz-filter-actions">
+                <button type="submit" class="btn btn-primary">Apply</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <section class="vz-panel">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+        </section>
+    }
+
+    <section class="vz-panel">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle vz-table vz-transactions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (transactions.Any())
+                    {
+                        foreach (var item in transactions)
+                        {
+                            var descriptionText = string.IsNullOrWhiteSpace(item.Description) ? "-" : item.Description;
+                            <tr>
+                                <td>@item.TransactionDate.ToString("yyyy-MM-dd")</td>
+                                <td>@(item.Category?.Name ?? "Uncategorized")</td>
+                                <td>
+                                    <span class="badge @(item.Type == TransactionType.Income ? "bg-success" : "bg-danger")">
+                                        @item.Type
+                                    </span>
+                                </td>
+                                <td class="vz-transaction-description-cell">
+                                    <span class="vz-transaction-description"
+                                          title="@descriptionText">@descriptionText</span>
+                                </td>
+                                <td>PHP @item.Amount.ToString("N2")</td>
+                                <td>
+                                    <div class="vz-action-icons">
+                                        <a asp-action="Details"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Transaction Details"
+                                           class="vz-action-icon vz-action-view"
+                                           title="Details"
+                                           aria-label="Details">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                                                <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
+                                            </svg>
+                                        </a>
+                                        <a asp-action="Edit"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Edit Transaction"
+                                           class="vz-action-icon vz-action-edit"
+                                           title="Edit"
+                                           aria-label="Edit">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
+                                                <path d="M16 7l3 3"></path>
+                                            </svg>
+                                        </a>
+                                        <a asp-action="Delete"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Delete Transaction"
+                                           class="vz-action-icon vz-action-delete"
+                                           title="Delete"
+                                           aria-label="Delete">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M4 7h16"></path>
+                                                <path d="M10 11v6"></path>
+                                                <path d="M14 11v6"></path>
+                                                <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"></path>
+                                                <path d="M9 7l1 -3h4l1 3"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                No transactions found for the selected filters.
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (Model.TotalCount > 0)
+        {
+            <nav class="vz-pagination" aria-label="Transactions pages">
+                @if (Model.HasPreviousPage)
+                {
+                    <a asp-action="Index"
+                       asp-route-page="@(Model.Page - 1)"
+                       asp-route-pageSize="@Model.PageSize"
+                       asp-route-search="@Model.Search"
+                       asp-route-category="@Model.Category"
+                       asp-route-startDate="@startDateValue"
+                       asp-route-endDate="@endDateValue"
+                       asp-route-minAmount="@minAmountValue"
+                       asp-route-maxAmount="@maxAmountValue"
+                       class="btn btn-outline-secondary btn-sm">Previous</a>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Previous</button>
+                }
+
+                @for (var pageNumber = firstPage; pageNumber <= lastPage; pageNumber++)
+                {
+                    if (pageNumber == Model.Page)
+                    {
+                        <span class="btn btn-primary btn-sm" aria-current="page">@pageNumber</span>
+                    }
+                    else
+                    {
+                        <a asp-action="Index"
+                           asp-route-page="@pageNumber"
+                           asp-route-pageSize="@Model.PageSize"
+                           asp-route-search="@Model.Search"
+                           asp-route-category="@Model.Category"
+                           asp-route-startDate="@startDateValue"
+                           asp-route-endDate="@endDateValue"
+                           asp-route-minAmount="@minAmountValue"
+                           asp-route-maxAmount="@maxAmountValue"
+                           class="btn btn-outline-secondary btn-sm">@pageNumber</a>
+                    }
+                }
+
+                @if (Model.HasNextPage)
+                {
+                    <a asp-action="Index"
+                       asp-route-page="@(Model.Page + 1)"
+                       asp-route-pageSize="@Model.PageSize"
+                       asp-route-search="@Model.Search"
+                       asp-route-category="@Model.Category"
+                       asp-route-startDate="@startDateValue"
+                       asp-route-endDate="@endDateValue"
+                       asp-route-minAmount="@minAmountValue"
+                       asp-route-maxAmount="@maxAmountValue"
+                       class="btn btn-outline-secondary btn-sm">Next</a>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Next</button>
+                }
+
+                <span class="text-muted small ms-2">
+                    Page @Model.Page of @Model.TotalPages (@Model.TotalCount total)
+                </span>
+            </nav>
+        }
+    </section>
+</section>

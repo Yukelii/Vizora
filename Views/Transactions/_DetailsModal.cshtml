@@ -1,0 +1,38 @@
+@model Vizora.Models.Transaction
+
+<div>
+    <dl class="row mb-4">
+        <dt class="col-sm-4">ID</dt>
+        <dd class="col-sm-8">@Model.Id</dd>
+
+        <dt class="col-sm-4">Date</dt>
+        <dd class="col-sm-8">@Model.TransactionDate.ToString("yyyy-MM-dd")</dd>
+
+        <dt class="col-sm-4">Type</dt>
+        <dd class="col-sm-8">@Model.Type</dd>
+
+        <dt class="col-sm-4">Category</dt>
+        <dd class="col-sm-8">@(Model.Category?.Name ?? "Uncategorized")</dd>
+
+        <dt class="col-sm-4">Amount</dt>
+        <dd class="col-sm-8">PHP @Model.Amount.ToString("N2")</dd>
+
+        <dt class="col-sm-4">Description</dt>
+        <dd class="col-sm-8">@(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</dd>
+
+        <dt class="col-sm-4">Created At</dt>
+        <dd class="col-sm-8">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
+
+        <dt class="col-sm-4">Updated At</dt>
+        <dd class="col-sm-8">@Model.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
+    </dl>
+
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="Edit"
+           asp-route-id="@Model.Id"
+           class="btn btn-primary"
+           data-modal="true"
+           data-modal-title="Edit Transaction">Edit</a>
+        <button type="button" class="btn btn-outline-secondary" data-modal-close="true">Close</button>
+    </div>
+</div>

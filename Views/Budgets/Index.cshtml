@@ -1,0 +1,103 @@
+@model IEnumerable<Vizora.Models.BudgetPerformanceViewModel>
+
+@{
+    ViewData["Title"] = "Budgets";
+}
+
+<h1>Budgets</h1>
+
+<p>
+    <a asp-action="Create"
+       class="btn btn-primary"
+       data-modal="true"
+       data-modal-title="Create Budget">Create Budget</a>
+</p>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">
+        No budgets yet. Create a budget to track planned spending vs actual spending.
+    </div>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Category</th>
+                <th>Period</th>
+                <th>Date Range</th>
+                <th>Planned</th>
+                <th>Actual</th>
+                <th>Remaining</th>
+                <th>Usage</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var budget in Model)
+        {
+            <tr>
+                <td>@budget.CategoryName</td>
+                <td>@budget.PeriodType</td>
+                <td>@budget.StartDate.ToString("yyyy-MM-dd") - @budget.EndDate.ToString("yyyy-MM-dd")</td>
+                <td>PHP @budget.PlannedAmount.ToString("N2")</td>
+                <td>PHP @budget.ActualSpending.ToString("N2")</td>
+                <td class="@(budget.RemainingAmount >= 0 ? "text-success" : "text-danger")">
+                    PHP @budget.RemainingAmount.ToString("N2")
+                </td>
+                <td>@budget.UsagePercent.ToString("N2")%</td>
+                <td>
+                    <span class="badge @(budget.IsOverBudget ? "bg-danger" : "bg-success")">
+                        @(budget.IsOverBudget ? "Over Budget" : "Within Budget")
+                    </span>
+                </td>
+                <td>
+                    <div class="vz-action-icons">
+                        <a asp-action="Details"
+                           asp-route-id="@budget.BudgetId"
+                           data-modal="true"
+                           data-modal-title="Budget Details"
+                           class="vz-action-icon vz-action-view"
+                           title="Details"
+                           aria-label="Details">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                                <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
+                            </svg>
+                        </a>
+                        <a asp-action="Edit"
+                           asp-route-id="@budget.BudgetId"
+                           data-modal="true"
+                           data-modal-title="Edit Budget"
+                           class="vz-action-icon vz-action-edit"
+                           title="Edit"
+                           aria-label="Edit">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
+                                <path d="M16 7l3 3"></path>
+                            </svg>
+                        </a>
+                        <a asp-action="Delete"
+                           asp-route-id="@budget.BudgetId"
+                           data-modal="true"
+                           data-modal-title="Delete Budget"
+                           class="vz-action-icon vz-action-delete"
+                           title="Delete"
+                           aria-label="Delete">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M4 7h16"></path>
+                                <path d="M10 11v6"></path>
+                                <path d="M14 11v6"></path>
+                                <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"></path>
+                                <path d="M9 7l1 -3h4l1 3"></path>
+                            </svg>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

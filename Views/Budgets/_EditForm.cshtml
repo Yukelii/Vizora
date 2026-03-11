@@ -1,0 +1,43 @@
+@model Vizora.Models.BudgetUpsertViewModel
+
+<form asp-action="Edit" method="post" data-modal-form="edit-budget">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" asp-for="Id" />
+
+    <div class="mb-3">
+        <label asp-for="CategoryId" class="form-label"></label>
+        <select asp-for="CategoryId" asp-items="ViewBag.CategoryId" class="form-select">
+            <option value="">-- Select Expense Category --</option>
+        </select>
+        <span asp-validation-for="CategoryId" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="PlannedAmount" class="form-label"></label>
+        <input asp-for="PlannedAmount" class="form-control" step="0.01" />
+        <span asp-validation-for="PlannedAmount" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="PeriodType" class="form-label"></label>
+        <select asp-for="PeriodType" asp-items="Html.GetEnumSelectList<BudgetPeriodType>()" class="form-select"></select>
+        <span asp-validation-for="PeriodType" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="StartDate" class="form-label"></label>
+        <input asp-for="StartDate" class="form-control" type="date" />
+        <span asp-validation-for="StartDate" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="EndDate" class="form-label"></label>
+        <input asp-for="EndDate" class="form-control" type="date" />
+        <span asp-validation-for="EndDate" class="text-danger"></span>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+    </div>
+</form>

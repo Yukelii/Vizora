@@ -1,0 +1,30 @@
+@model Vizora.Models.BudgetUpsertViewModel
+
+@{
+    ViewData["Title"] = "Create Budget";
+    var isModalRequest = string.Equals(
+        Context.Request.Headers["X-Requested-With"],
+        "XMLHttpRequest",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (isModalRequest)
+    {
+        Layout = null;
+    }
+}
+
+@if (isModalRequest)
+{
+    <partial name="_CreateForm" model="Model" />
+}
+else
+{
+    <h1>Create Budget</h1>
+
+    <hr />
+    <div class="row">
+        <div class="col-md-6">
+            <partial name="_CreateForm" model="Model" />
+        </div>
+    </div>
+}
