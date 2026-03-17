@@ -52,15 +52,35 @@ namespace Vizora.Services
 
         public async Task<TransactionImportResultDto> ImportCsvAsync(IFormFile file)
         {
-            var userId = _userContextService.GetRequiredUserId();
+            var result = new TransactionImportResultDto();
+            string userId;
+
+            try
+            {
+                userId = _userContextService.GetRequiredUserId();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unable to resolve authenticated user for import.");
+                return FinalizeImportResult(
+                    result,
+                    OperationOutcomeStatus.Failed,
+                    "Import failed due to an unexpected error. Please try again.",
+                    issueCode: "IMPORT_USER_CONTEXT",
+                    isDataTrusted: false);
+            }
+
             var importLock = ImportLocks.GetOrAdd(userId, static _ => new SemaphoreSlim(1, 1));
 
             if (!await importLock.WaitAsync(0))
             {
-                throw new InvalidOperationException("An import operation is already running for your account. Please wait until it finishes.");
+                return FinalizeImportResult(
+                    result,
+                    OperationOutcomeStatus.InvalidRequest,
+                    "An import operation is already running for your account. Please wait until it finishes.",
+                    issueCode: "IMPORT_CONCURRENT");
             }
 
-            var result = new TransactionImportResultDto();
             var startedAtUtc = DateTime.UtcNow;
             var createdCategories = 0;
             var safeFileName = string.Empty;
@@ -72,14 +92,22 @@ namespace Vizora.Services
                 databaseLockAcquired = await TryAcquireDatabaseImportLockAsync(userId, startedAtUtc);
                 if (!databaseLockAcquired)
                 {
-                    throw new InvalidOperationException("An import operation is already running for your account. Please wait until it finishes.");
+                    return FinalizeImportResult(
+                        result,
+                        OperationOutcomeStatus.InvalidRequest,
+                        "An import operation is already running for your account. Please wait until it finishes.",
+                        issueCode: "IMPORT_CONCURRENT");
                 }
 
                 try
                 {
                     if (file == null || file.Length <= 0)
                     {
-                        throw new InvalidOperationException("Please select a non-empty CSV file.");
+                        return FinalizeImportResult(
+                            result,
+                            OperationOutcomeStatus.InvalidRequest,
+                            "Please select a non-empty CSV file.",
+                            issueCode: "IMPORT_FILE_EMPTY");
                     }
 
                     safeFileName = Path.GetFileName(file.FileName ?? string.Empty);
@@ -87,12 +115,20 @@ namespace Vizora.Services
 
                     if (file.Length > MaxFileSizeBytes)
                     {
-                        throw new InvalidOperationException("CSV file is too large. Maximum allowed size is 2 MB.");
+                        return FinalizeImportResult(
+                            result,
+                            OperationOutcomeStatus.InvalidRequest,
+                            "CSV file is too large. Maximum allowed size is 2 MB.",
+                            issueCode: "IMPORT_FILE_TOO_LARGE");
                     }
 
                     if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new InvalidOperationException("Only CSV files are supported.");
+                        return FinalizeImportResult(
+                            result,
+                            OperationOutcomeStatus.InvalidRequest,
+                            "Only CSV files are supported.",
+                            issueCode: "IMPORT_INVALID_EXTENSION");
                     }
 
                     using var stream = file.OpenReadStream();
@@ -101,11 +137,23 @@ namespace Vizora.Services
                     var headerLine = await reader.ReadLineAsync();
                     if (string.IsNullOrWhiteSpace(headerLine))
                     {
-                        throw new InvalidOperationException("CSV file is empty.");
+                        return FinalizeImportResult(
+                            result,
+                            OperationOutcomeStatus.InvalidRequest,
+                            "CSV file is empty.",
+                            issueCode: "IMPORT_CSV_EMPTY");
                     }
 
                     var headerMap = BuildHeaderMap(ParseCsvLine(headerLine));
-                    ValidateHeaders(headerMap);
+                    var headerValidationError = ValidateHeaders(headerMap);
+                    if (headerValidationError != null)
+                    {
+                        return FinalizeImportResult(
+                            result,
+                            OperationOutcomeStatus.InvalidRequest,
+                            headerValidationError,
+                            issueCode: "IMPORT_INVALID_HEADERS");
+                    }
 
                     var categories = await _context.Categories
                         .Where(c => c.UserId == userId)
@@ -215,21 +263,18 @@ namespace Vizora.Services
                         await _context.SaveChangesAsync();
                     }
 
-                    result.Status = ResolveImportStatus(result);
+                    ApplyImportOutcome(result);
                     return result;
-                }
-                catch (InvalidOperationException ex)
-                {
-                    result.Status = TransactionImportStatus.Failed;
-                    result.FailureMessage = ex.Message;
-                    throw;
                 }
                 catch (Exception ex)
                 {
-                    result.Status = TransactionImportStatus.Failed;
-                    result.FailureMessage = "Import failed due to an unexpected error. Please try again.";
                     _logger.LogError(ex, "Unexpected transaction CSV import failure for user {UserId}.", userId);
-                    throw new InvalidOperationException(result.FailureMessage, ex);
+                    return FinalizeImportResult(
+                        result,
+                        OperationOutcomeStatus.Failed,
+                        "Import failed due to an unexpected error. Please try again.",
+                        issueCode: "IMPORT_UNEXPECTED",
+                        isDataTrusted: false);
                 }
                 finally
                 {
@@ -251,7 +296,9 @@ namespace Vizora.Services
                             result.ErrorCount,
                             CreatedCategories = createdCategories,
                             DurationMs = (long)(DateTime.UtcNow - startedAtUtc).TotalMilliseconds,
-                            FailureReason = result.FailureMessage
+                            FailureReason = result.Status is OperationOutcomeStatus.Success or OperationOutcomeStatus.PartialSuccess
+                                ? null
+                                : result.UserMessage
                         }
                     });
                 }
@@ -364,15 +411,17 @@ namespace Vizora.Services
             return map;
         }
 
-        private static void ValidateHeaders(IReadOnlyDictionary<string, int> headerMap)
+        private static string? ValidateHeaders(IReadOnlyDictionary<string, int> headerMap)
         {
             if (!headerMap.ContainsKey("date") ||
                 !headerMap.ContainsKey("description") ||
                 !headerMap.ContainsKey("amount") ||
                 !headerMap.ContainsKey("type"))
             {
-                throw new InvalidOperationException("CSV headers must include Date, Description, Amount, and Type.");
+                return "CSV headers must include Date, Description, Amount, and Type.";
             }
+
+            return null;
         }
 
         private static bool TryMapRow(
@@ -671,9 +720,14 @@ namespace Vizora.Services
             result.SkippedCount++;
             result.ErrorCount = result.RejectedCount;
 
-            if (result.Errors.Count < MaxErrorMessages)
+            if (result.Issues.Count < MaxErrorMessages)
             {
-                result.Errors.Add($"Line {lineNumber}: {message}");
+                var issueMessage = $"Line {lineNumber}: {message}";
+                result.Issues.Add(new OperationIssueDto
+                {
+                    Code = "ROW_VALIDATION",
+                    Message = issueMessage
+                });
             }
 
             _logger.LogWarning("CSV import row skipped at line {LineNumber}: {Reason}", lineNumber, message);
@@ -685,19 +739,47 @@ namespace Vizora.Services
             result.SkippedCount++;
         }
 
-        private static TransactionImportStatus ResolveImportStatus(TransactionImportResultDto result)
+        private static void ApplyImportOutcome(TransactionImportResultDto result)
         {
             if (result.RejectedCount > 0 && result.ImportedCount == 0)
             {
-                return TransactionImportStatus.Failed;
+                result.Status = OperationOutcomeStatus.ValidationFailure;
+                result.UserMessage = "Import failed validation. No rows were imported.";
+                return;
             }
 
             if (result.DuplicateCount > 0 || result.RejectedCount > 0)
             {
-                return TransactionImportStatus.PartialSuccess;
+                result.Status = OperationOutcomeStatus.PartialSuccess;
+                result.UserMessage = "Import completed with warnings.";
+                return;
             }
 
-            return TransactionImportStatus.Success;
+            result.Status = OperationOutcomeStatus.Success;
+            result.UserMessage = "Import completed successfully.";
+        }
+
+        private static TransactionImportResultDto FinalizeImportResult(
+            TransactionImportResultDto result,
+            OperationOutcomeStatus status,
+            string userMessage,
+            string? issueCode = null,
+            bool isDataTrusted = true)
+        {
+            result.Status = status;
+            result.UserMessage = userMessage;
+            result.IsDataTrusted = isDataTrusted;
+
+            if (!string.IsNullOrWhiteSpace(issueCode))
+            {
+                result.Issues.Add(new OperationIssueDto
+                {
+                    Code = issueCode,
+                    Message = userMessage
+                });
+            }
+
+            return result;
         }
 
         private async Task TryLogAuditAsync(AuditLogRequest request)

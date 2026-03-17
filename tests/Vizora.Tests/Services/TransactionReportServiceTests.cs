@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Vizora.DTOs;
 using Vizora.Data;
 using Vizora.Models;
 using Vizora.Services;
@@ -45,9 +46,11 @@ public class TransactionReportServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var csv = Encoding.UTF8.GetString(await service.ExportTransactionsCsvAsync());
+        var result = await service.ExportTransactionsCsvAsync();
+        var csv = Encoding.UTF8.GetString(result.Content!);
         var lines = ToLines(csv);
 
+        Assert.Equal(OperationOutcomeStatus.Success, result.Status);
         Assert.Equal("TransactionId,TransactionDate,Type,Category,Amount,Description", lines[0]);
         Assert.Equal(2, lines.Count);
         Assert.Contains("User lunch", csv);
@@ -73,8 +76,10 @@ public class TransactionReportServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var csv = Encoding.UTF8.GetString(await service.ExportTransactionsCsvAsync());
+        var result = await service.ExportTransactionsCsvAsync();
+        var csv = Encoding.UTF8.GetString(result.Content!);
 
+        Assert.Equal(OperationOutcomeStatus.Success, result.Status);
         Assert.Contains("\"'=Danger\"", csv);
         Assert.Contains("\"'=SUM(A1:A2)\"", csv);
     }
@@ -85,9 +90,12 @@ public class TransactionReportServiceTests
         await using var context = TestDbContextFactory.Create();
         var service = CreateService(context);
 
-        var csv = Encoding.UTF8.GetString(await service.ExportTransactionsCsvAsync());
+        var result = await service.ExportTransactionsCsvAsync();
+        var csv = Encoding.UTF8.GetString(result.Content!);
         var lines = ToLines(csv);
 
+        Assert.Equal(OperationOutcomeStatus.Empty, result.Status);
+        Assert.Equal("No transactions matched your export filters.", result.UserMessage);
         Assert.Single(lines);
         Assert.Equal("TransactionId,TransactionDate,Type,Category,Amount,Description", lines[0]);
     }
@@ -123,19 +131,54 @@ public class TransactionReportServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var csv = Encoding.UTF8.GetString(await service.ExportTransactionsCsvAsync());
+        var result = await service.ExportTransactionsCsvAsync();
+        var csv = Encoding.UTF8.GetString(result.Content!);
         var lines = ToLines(csv);
 
+        Assert.Equal(OperationOutcomeStatus.Success, result.Status);
         Assert.Equal(3, lines.Count);
         Assert.Contains("Newer", lines[1]);
         Assert.Contains("Older", lines[2]);
     }
 
-    private static TransactionReportService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)
+    [Fact]
+    public async Task ExportTransactionsCsvAsync_WhenDateRangeInvalid_ReturnsInvalidRequest()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var service = CreateService(context);
+
+        var result = await service.ExportTransactionsCsvAsync(new TransactionReportExportRequestDto
+        {
+            StartDate = new DateTime(2026, 2, 2),
+            EndDate = new DateTime(2026, 1, 1)
+        });
+
+        Assert.Equal(OperationOutcomeStatus.InvalidRequest, result.Status);
+        Assert.Equal("Start date cannot be later than end date.", result.UserMessage);
+        Assert.Null(result.Content);
+    }
+
+    [Fact]
+    public async Task ExportTransactionsCsvAsync_WhenUnexpectedFailureOccurs_ReturnsSafeFailureContract()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var service = CreateService(context, new ThrowingUserContextService());
+
+        var result = await service.ExportTransactionsCsvAsync();
+
+        Assert.Equal(OperationOutcomeStatus.Failed, result.Status);
+        Assert.Equal("Unable to generate export due to an unexpected error. Please try again.", result.UserMessage);
+        Assert.DoesNotContain("Simulated", result.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.IsDataTrusted);
+    }
+
+    private static TransactionReportService CreateService(
+        ApplicationDbContext context,
+        IUserContextService? userContextService = null)
     {
         return new TransactionReportService(
             context,
-            new TestUserContextService(userId),
+            userContextService ?? new TestUserContextService(TestDataSeeder.DefaultUserId),
             new NoOpAuditService(),
             NullLogger<TransactionReportService>.Instance);
     }

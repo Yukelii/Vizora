@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Vizora.DTOs;
 using Vizora.Models;
 using Vizora.Services;
 
@@ -231,31 +232,45 @@ namespace Vizora.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Import(IFormFile? csvFile)
         {
-            if (csvFile == null || csvFile.Length <= 0)
-            {
-                TempData["ImportError"] = "Please select a non-empty CSV file.";
-                return RedirectToAction("Index", "Reports");
-            }
-
             try
             {
-                var result = await _transactionImportService.ImportCsvAsync(csvFile);
-                TempData["ImportSummary"] =
-                    $"Status: {result.Status} | Imported: {result.ImportedCount} | Duplicates: {result.DuplicateCount} | Rejected: {result.RejectedCount} | Processed: {result.ProcessedCount}";
-
-                if (result.Errors.Count > 0)
+                var result = await _transactionImportService.ImportCsvAsync(csvFile!);
+                var details = new List<OperationIssueDto>
                 {
-                    TempData["ImportErrors"] = string.Join(" | ", result.Errors.Take(5));
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                TempData["ImportError"] = ex.Message;
+                    new()
+                    {
+                        Code = "IMPORT_SUMMARY",
+                        Message =
+                            $"Imported: {result.ImportedCount} | Duplicates: {result.DuplicateCount} | Rejected: {result.RejectedCount} | Processed: {result.ProcessedCount}"
+                    }
+                };
+                details.AddRange(result.Issues.Take(5));
+
+                OperationFeedbackTempData.Set(TempData, new OperationResultDto
+                {
+                    Status = result.Status,
+                    UserMessage = result.UserMessage,
+                    IsDataTrusted = result.IsDataTrusted,
+                    Issues = details
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected import failure reached controller boundary.");
-                TempData["ImportError"] = "Import failed due to an unexpected error. Please try again.";
+                OperationFeedbackTempData.Set(TempData, new OperationResultDto
+                {
+                    Status = OperationOutcomeStatus.Failed,
+                    UserMessage = "Import failed due to an unexpected error. Please try again.",
+                    IsDataTrusted = false,
+                    Issues = new List<OperationIssueDto>
+                    {
+                        new()
+                        {
+                            Code = "IMPORT_UNEXPECTED",
+                            Message = "Import failed due to an unexpected error. Please try again."
+                        }
+                    }
+                });
             }
 
             return RedirectToAction("Index", "Reports");

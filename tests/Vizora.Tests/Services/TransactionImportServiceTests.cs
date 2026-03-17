@@ -37,7 +37,7 @@ public class TransactionImportServiceTests
             .ToListAsync();
 
         Assert.Equal(2, result.ImportedCount);
-        Assert.Equal(TransactionImportStatus.Success, result.Status);
+        Assert.Equal(OperationOutcomeStatus.Success, result.Status);
         Assert.Equal(0, result.SkippedCount);
         Assert.Equal(0, result.DuplicateCount);
         Assert.Equal(0, result.RejectedCount);
@@ -68,14 +68,15 @@ public class TransactionImportServiceTests
         var result = await service.ImportCsvAsync(CreateCsvFile(csv));
 
         Assert.Equal(1, result.ImportedCount);
-        Assert.Equal(TransactionImportStatus.PartialSuccess, result.Status);
+        Assert.Equal(OperationOutcomeStatus.PartialSuccess, result.Status);
         Assert.Equal(3, result.SkippedCount);
         Assert.Equal(0, result.DuplicateCount);
         Assert.Equal(3, result.RejectedCount);
         Assert.Equal(3, result.ErrorCount);
         Assert.Equal(4, result.ProcessedCount);
         Assert.Equal(1, await context.Transactions.CountAsync());
-        Assert.True(result.Errors.Count > 0);
+        Assert.Equal(3, result.Issues.Count);
+        Assert.All(result.Issues, issue => Assert.Equal("ROW_VALIDATION", issue.Code));
     }
 
     [Fact]
@@ -109,7 +110,7 @@ public class TransactionImportServiceTests
         var rows = await context.Transactions.AsNoTracking().OrderBy(t => t.TransactionDate).ToListAsync();
 
         Assert.Equal(1, result.ImportedCount);
-        Assert.Equal(TransactionImportStatus.PartialSuccess, result.Status);
+        Assert.Equal(OperationOutcomeStatus.PartialSuccess, result.Status);
         Assert.Equal(2, result.SkippedCount);
         Assert.Equal(2, result.DuplicateCount);
         Assert.Equal(0, result.RejectedCount);
@@ -139,7 +140,7 @@ public class TransactionImportServiceTests
 
         Assert.Equal(2, result.ImportedCount);
         Assert.Equal(0, result.DuplicateCount);
-        Assert.Equal(TransactionImportStatus.Success, result.Status);
+        Assert.Equal(OperationOutcomeStatus.Success, result.Status);
         Assert.Equal(2, rows.Count);
         Assert.Contains(rows, row => row.Type == TransactionType.Expense);
         Assert.Contains(rows, row => row.Type == TransactionType.Income);
@@ -164,7 +165,7 @@ public class TransactionImportServiceTests
         Assert.Equal(0, result.ImportedCount);
         Assert.Equal(2, result.RejectedCount);
         Assert.Equal(2, result.ErrorCount);
-        Assert.Equal(TransactionImportStatus.Failed, result.Status);
+        Assert.Equal(OperationOutcomeStatus.ValidationFailure, result.Status);
         Assert.Equal(2, result.ProcessedCount);
     }
 
@@ -220,7 +221,7 @@ public class TransactionImportServiceTests
     }
 
     [Fact]
-    public async Task ImportCsvAsync_WhenActiveDatabaseImportLockExists_Throws()
+    public async Task ImportCsvAsync_WhenActiveDatabaseImportLockExists_ReturnsInvalidRequest()
     {
         await using var context = await CreateSqliteContextAsync();
         var user = TestDataSeeder.EnsureUser(context, TestDataSeeder.DefaultUserId);
@@ -235,14 +236,16 @@ public class TransactionImportServiceTests
 
         var service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ImportCsvAsync(CreateCsvFile(
-                """
-                Date,Description,Amount,Type,Category
-                2026-01-01,Lunch,10,Expense,Food
-                """)));
+        var result = await service.ImportCsvAsync(CreateCsvFile(
+            """
+            Date,Description,Amount,Type,Category
+            2026-01-01,Lunch,10,Expense,Food
+            """));
 
-        Assert.Contains("already running", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(OperationOutcomeStatus.InvalidRequest, result.Status);
+        Assert.Contains("already running", result.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(result.Issues);
+        Assert.Equal("IMPORT_CONCURRENT", result.Issues[0].Code);
     }
 
     [Fact]
@@ -274,15 +277,19 @@ public class TransactionImportServiceTests
     }
 
     [Fact]
-    public async Task ImportCsvAsync_WhenFileExtensionInvalid_ThrowsUserSafeError()
+    public async Task ImportCsvAsync_WhenFileExtensionInvalid_ReturnsInvalidRequestResult()
     {
         await using var context = TestDbContextFactory.Create();
         var service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ImportCsvAsync(CreateCsvFile("Date,Description,Amount,Type\n2026-01-01,Lunch,10,Expense", "transactions.txt")));
+        var result = await service.ImportCsvAsync(CreateCsvFile(
+            "Date,Description,Amount,Type\n2026-01-01,Lunch,10,Expense",
+            "transactions.txt"));
 
-        Assert.Contains("Only CSV files are supported", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(OperationOutcomeStatus.InvalidRequest, result.Status);
+        Assert.Contains("Only CSV files are supported", result.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(result.Issues);
+        Assert.Equal("IMPORT_INVALID_EXTENSION", result.Issues[0].Code);
     }
 
     [Fact]
@@ -305,14 +312,31 @@ public class TransactionImportServiceTests
         var firstImportTask = Task.Run(() => service.ImportCsvAsync(blockingFile));
         Assert.True(streamOpenStarted.Wait(TimeSpan.FromSeconds(5)), "Expected first import to hold the per-user import lock.");
 
-        var concurrentException = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ImportCsvAsync(CreateCsvFile(csv)));
-
-        Assert.Contains("already running", concurrentException.Message, StringComparison.OrdinalIgnoreCase);
+        var concurrentResult = await service.ImportCsvAsync(CreateCsvFile(csv));
+        Assert.Equal(OperationOutcomeStatus.InvalidRequest, concurrentResult.Status);
+        Assert.Contains("already running", concurrentResult.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(concurrentResult.Issues);
+        Assert.Equal("IMPORT_CONCURRENT", concurrentResult.Issues[0].Code);
 
         releaseStreamOpen.Set();
         var firstResult = await firstImportTask;
         Assert.Equal(1, firstResult.ImportedCount);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_WhenUnexpectedFailureOccurs_ReturnsSafeFailureContract()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var service = CreateService(context);
+
+        var result = await service.ImportCsvAsync(new ThrowingFormFile());
+
+        Assert.Equal(OperationOutcomeStatus.Failed, result.Status);
+        Assert.Equal("Import failed due to an unexpected error. Please try again.", result.UserMessage);
+        Assert.DoesNotContain("Simulated", result.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.IsDataTrusted);
+        Assert.Single(result.Issues);
+        Assert.Equal("IMPORT_UNEXPECTED", result.Issues[0].Code);
     }
 
     private static TransactionImportService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)
@@ -391,6 +415,36 @@ public class TransactionImportServiceTests
             _streamOpenStarted.Set();
             _releaseStreamOpen.Wait(TimeSpan.FromSeconds(10));
             return new MemoryStream(_content, writable: false);
+        }
+    }
+
+    private sealed class ThrowingFormFile : IFormFile
+    {
+        public string ContentType { get; set; } = "text/csv";
+
+        public string ContentDisposition { get; set; } = string.Empty;
+
+        public IHeaderDictionary Headers { get; set; } = new HeaderDictionary();
+
+        public long Length => 10;
+
+        public string Name => "csvFile";
+
+        public string FileName => "transactions.csv";
+
+        public void CopyTo(Stream target)
+        {
+            throw new InvalidOperationException("Simulated stream failure.");
+        }
+
+        public Task CopyToAsync(Stream target, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("Simulated stream failure.");
+        }
+
+        public Stream OpenReadStream()
+        {
+            throw new InvalidOperationException("Simulated stream failure.");
         }
     }
 }

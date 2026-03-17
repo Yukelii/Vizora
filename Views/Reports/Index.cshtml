@@ -1,3 +1,6 @@
+@model Vizora.Models.ReportsIndexViewModel
+@using Vizora.DTOs
+
 @{
     ViewData["Title"] = "Reports";
 }
@@ -10,20 +13,29 @@
         </div>
     </header>
 
-    @if (TempData["ImportSummary"] is string importSummary)
+    @if (Model?.Feedback is { } feedback)
     {
+        var alertClass = feedback.Status switch
+        {
+            OperationOutcomeStatus.Success => "alert-success",
+            OperationOutcomeStatus.PartialSuccess => "alert-warning",
+            OperationOutcomeStatus.Empty => "alert-info",
+            OperationOutcomeStatus.InvalidRequest => "alert-warning",
+            OperationOutcomeStatus.ValidationFailure => "alert-warning",
+            _ => "alert-danger"
+        };
+
         <section class="vz-panel">
-            <div class="alert alert-success mb-0" role="status">@importSummary</div>
-            @if (TempData["ImportErrors"] is string importErrors)
+            <div class="alert @alertClass mb-0" role="status">@feedback.UserMessage</div>
+            @if (feedback.Issues.Count > 0)
             {
-                <div class="alert alert-warning mt-2 mb-0" role="status">@importErrors</div>
+                <ul class="list-unstyled small mt-2 mb-0">
+                    @foreach (var issue in feedback.Issues.Take(5))
+                    {
+                        <li>@issue.Message</li>
+                    }
+                </ul>
             }
-        </section>
-    }
-    else if (TempData["ImportError"] is string importError)
-    {
-        <section class="vz-panel">
-            <div class="alert alert-danger mb-0" role="alert">@importError</div>
         </section>
     }
 
