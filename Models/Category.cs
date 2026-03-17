@@ -21,6 +21,9 @@ namespace Vizora.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 
         public ICollection<Budget> Budgets { get; set; } = new List<Budget>();

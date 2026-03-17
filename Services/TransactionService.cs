@@ -154,11 +154,16 @@ namespace Vizora.Services
             var userId = _userContextService.GetRequiredUserId();
             var category = await ValidateCategoryAsync(userId, transaction.CategoryId);
 
+            if (transaction.Amount <= 0m || transaction.Amount > 999_999_999m)
+            {
+                throw new InvalidOperationException("Amount must be greater than 0 and within supported limits.");
+            }
+
             // Derive transaction type from selected category and normalize persisted values.
             transaction.UserId = userId;
             transaction.CategoryId = category.Id;
             transaction.Type = category.Type;
-            transaction.Amount = Math.Abs(transaction.Amount);
+            transaction.Amount = Math.Round(transaction.Amount, 2);
             transaction.Description = string.IsNullOrWhiteSpace(transaction.Description)
                 ? null
                 : transaction.Description.Trim();
@@ -181,6 +186,12 @@ namespace Vizora.Services
         public async Task<bool> UpdateAsync(Transaction transaction)
         {
             var userId = _userContextService.GetRequiredUserId();
+
+            if (transaction.RowVersion == null || transaction.RowVersion.Length == 0)
+            {
+                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+            }
+
             var existing = await _context.Transactions
                 .FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == userId);
 
@@ -189,13 +200,19 @@ namespace Vizora.Services
                 return false;
             }
 
+            _context.Entry(existing).Property(t => t.RowVersion).OriginalValue = transaction.RowVersion;
             var oldValues = BuildTransactionAuditState(existing);
 
             // Re-validate category ownership and keep type/category consistency.
             var category = await ValidateCategoryAsync(userId, transaction.CategoryId);
 
+            if (transaction.Amount <= 0m || transaction.Amount > 999_999_999m)
+            {
+                throw new InvalidOperationException("Amount must be greater than 0 and within supported limits.");
+            }
+
             existing.CategoryId = category.Id;
-            existing.Amount = Math.Abs(transaction.Amount);
+            existing.Amount = Math.Round(transaction.Amount, 2);
             existing.Type = category.Type;
             existing.Description = string.IsNullOrWhiteSpace(transaction.Description)
                 ? null
@@ -203,7 +220,16 @@ namespace Vizora.Services
             existing.TransactionDate = NormalizeUtc(transaction.TransactionDate);
             existing.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new InvalidOperationException(
+                    "This record was modified by another user. Please reload and try again.",
+                    ex);
+            }
 
             await TryLogAuditAsync(new AuditLogRequest
             {

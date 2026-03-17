@@ -22,6 +22,7 @@ namespace Vizora.Services
         private const long MaxFileSizeBytes = 2 * 1024 * 1024; // 2 MB
         private const int MaxRowsPerImport = 10_000;
         private const int MaxErrorMessages = 20;
+        private static readonly TimeSpan ImportLockStaleThreshold = TimeSpan.FromMinutes(15);
 
         private static readonly string[] SupportedDateFormats =
         {
@@ -59,16 +60,20 @@ namespace Vizora.Services
                 throw new InvalidOperationException("An import operation is already running for your account. Please wait until it finishes.");
             }
 
+            var result = new TransactionImportResultDto();
+            var startedAtUtc = DateTime.UtcNow;
+            var createdCategories = 0;
+            var safeFileName = string.Empty;
+            var safeFileSize = 0L;
+            var databaseLockAcquired = false;
+
             try
             {
-                var result = new TransactionImportResultDto();
-                var startedAtUtc = DateTime.UtcNow;
-                var processedRows = 0;
-                var createdCategories = 0;
-                var status = "SUCCESS";
-                string? failureReason = null;
-                var safeFileName = string.Empty;
-                var safeFileSize = 0L;
+                databaseLockAcquired = await TryAcquireDatabaseImportLockAsync(userId, startedAtUtc);
+                if (!databaseLockAcquired)
+                {
+                    throw new InvalidOperationException("An import operation is already running for your account. Please wait until it finishes.");
+                }
 
                 try
                 {
@@ -90,6 +95,18 @@ namespace Vizora.Services
                         throw new InvalidOperationException("Only CSV files are supported.");
                     }
 
+                    using var stream = file.OpenReadStream();
+                    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+                    var headerLine = await reader.ReadLineAsync();
+                    if (string.IsNullOrWhiteSpace(headerLine))
+                    {
+                        throw new InvalidOperationException("CSV file is empty.");
+                    }
+
+                    var headerMap = BuildHeaderMap(ParseCsvLine(headerLine));
+                    ValidateHeaders(headerMap);
+
                     var categories = await _context.Categories
                         .Where(c => c.UserId == userId)
                         .ToListAsync();
@@ -103,18 +120,6 @@ namespace Vizora.Services
 
                     var transactionsToInsert = new List<Transaction>();
                     var importedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                    using var stream = file.OpenReadStream();
-                    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-
-                    var headerLine = await reader.ReadLineAsync();
-                    if (string.IsNullOrWhiteSpace(headerLine))
-                    {
-                        throw new InvalidOperationException("CSV file is empty.");
-                    }
-
-                    var headerMap = BuildHeaderMap(ParseCsvLine(headerLine));
-                    ValidateHeaders(headerMap);
 
                     var rowCount = 0;
                     var lineNumber = 1;
@@ -134,16 +139,16 @@ namespace Vizora.Services
                         }
 
                         rowCount++;
-                        processedRows++;
+                        result.ProcessedCount++;
                         if (rowCount > MaxRowsPerImport)
                         {
-                            RegisterRowError(result, lineNumber, "Row limit exceeded. Maximum supported rows per import is 10,000.");
+                            RegisterRejectedRow(result, lineNumber, "Row limit exceeded. Maximum supported rows per import is 10,000.");
                             break;
                         }
 
                         if (!TryMapRow(ParseCsvLine(line), headerMap, out var row, out var rowError))
                         {
-                            RegisterRowError(result, lineNumber, rowError);
+                            RegisterRejectedRow(result, lineNumber, rowError);
                             continue;
                         }
 
@@ -156,23 +161,34 @@ namespace Vizora.Services
 
                         if (resolvedCategory == null || resolvedCategory.UserId != userId)
                         {
-                            RegisterRowError(result, lineNumber, "Category is invalid for the authenticated user.");
+                            RegisterRejectedRow(result, lineNumber, "Category is invalid for the authenticated user.");
                             continue;
                         }
 
                         var normalizedDate = NormalizeStartUtc(row.Date);
                         var normalizedDescription = NormalizeDescription(row.Description);
-                        var duplicateKey = BuildDuplicateKey(normalizedDate, row.Amount, normalizedDescription);
+                        var duplicateKey = BuildDuplicateKey(
+                            normalizedDate,
+                            row.Amount,
+                            resolvedCategory.Id,
+                            resolvedCategory.Type,
+                            normalizedDescription);
 
                         if (importedKeys.Contains(duplicateKey))
                         {
-                            result.SkippedCount++;
+                            RegisterDuplicate(result);
                             continue;
                         }
 
-                        if (await IsDuplicateTransactionAsync(userId, normalizedDate, row.Amount, normalizedDescription))
+                        if (await IsDuplicateTransactionAsync(
+                                userId,
+                                normalizedDate,
+                                row.Amount,
+                                resolvedCategory.Id,
+                                resolvedCategory.Type,
+                                normalizedDescription))
                         {
-                            result.SkippedCount++;
+                            RegisterDuplicate(result);
                             importedKeys.Add(duplicateKey);
                             continue;
                         }
@@ -199,13 +215,21 @@ namespace Vizora.Services
                         await _context.SaveChangesAsync();
                     }
 
+                    result.Status = ResolveImportStatus(result);
                     return result;
                 }
                 catch (InvalidOperationException ex)
                 {
-                    status = "FAILED";
-                    failureReason = ex.Message;
+                    result.Status = TransactionImportStatus.Failed;
+                    result.FailureMessage = ex.Message;
                     throw;
+                }
+                catch (Exception ex)
+                {
+                    result.Status = TransactionImportStatus.Failed;
+                    result.FailureMessage = "Import failed due to an unexpected error. Please try again.";
+                    _logger.LogError(ex, "Unexpected transaction CSV import failure for user {UserId}.", userId);
+                    throw new InvalidOperationException(result.FailureMessage, ex);
                 }
                 finally
                 {
@@ -216,23 +240,111 @@ namespace Vizora.Services
                         EntityId = "transactions-csv",
                         NewValues = new
                         {
-                            Status = status,
+                            Status = result.Status.ToString(),
                             FileName = safeFileName,
                             FileSize = safeFileSize,
-                            ProcessedRows = processedRows,
+                            result.ProcessedCount,
                             result.ImportedCount,
+                            result.DuplicateCount,
+                            result.RejectedCount,
                             result.SkippedCount,
                             result.ErrorCount,
                             CreatedCategories = createdCategories,
                             DurationMs = (long)(DateTime.UtcNow - startedAtUtc).TotalMilliseconds,
-                            FailureReason = failureReason
+                            FailureReason = result.FailureMessage
                         }
                     });
                 }
             }
             finally
             {
+                if (databaseLockAcquired)
+                {
+                    await TryReleaseDatabaseImportLockAsync(userId);
+                }
+
                 importLock.Release();
+            }
+        }
+
+        private async Task<bool> TryAcquireDatabaseImportLockAsync(string userId, DateTime acquiredAtUtc)
+        {
+            try
+            {
+                var staleCutoff = acquiredAtUtc - ImportLockStaleThreshold;
+                var existingLock = await _context.ImportExecutionLocks
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(lockRow => lockRow.UserId == userId);
+
+                if (existingLock != null && existingLock.AcquiredAt >= staleCutoff)
+                {
+                    return false;
+                }
+
+                if (existingLock != null)
+                {
+                    _context.ImportExecutionLocks.Remove(existingLock);
+                    await _context.SaveChangesAsync();
+                }
+
+                var trackedExisting = _context.ChangeTracker.Entries<ImportExecutionLock>()
+                    .FirstOrDefault(entry => entry.Entity.UserId == userId);
+
+                if (trackedExisting != null)
+                {
+                    trackedExisting.State = EntityState.Detached;
+                }
+
+                _context.ImportExecutionLocks.Add(new ImportExecutionLock
+                {
+                    UserId = userId,
+                    AcquiredAt = acquiredAtUtc
+                });
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+            catch (DbUpdateException)
+            {
+                var lockEntry = _context.ChangeTracker.Entries<ImportExecutionLock>()
+                    .FirstOrDefault(entry =>
+                        entry.State == EntityState.Added &&
+                        entry.Entity.UserId == userId);
+
+                if (lockEntry != null)
+                {
+                    lockEntry.State = EntityState.Detached;
+                }
+
+                return false;
+            }
+        }
+
+        private async Task TryReleaseDatabaseImportLockAsync(string userId)
+        {
+            try
+            {
+                var lockRow = await _context.ImportExecutionLocks
+                    .FirstOrDefaultAsync(existing => existing.UserId == userId);
+
+                if (lockRow == null)
+                {
+                    return;
+                }
+
+                _context.ImportExecutionLocks.Remove(lockRow);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to release transaction import lock for user {UserId}.",
+                    userId);
             }
         }
 
@@ -533,6 +645,8 @@ namespace Vizora.Services
             string userId,
             DateTime transactionDateUtc,
             decimal amount,
+            int categoryId,
+            TransactionType type,
             string? description)
         {
             var start = NormalizeStartUtc(transactionDateUtc);
@@ -543,16 +657,19 @@ namespace Vizora.Services
                 .AsNoTracking()
                 .AnyAsync(t =>
                     t.UserId == userId &&
+                    t.CategoryId == categoryId &&
+                    t.Type == type &&
                     t.Amount == amount &&
                     t.TransactionDate >= start &&
                     t.TransactionDate <= end &&
                     (t.Description ?? string.Empty).ToLower() == normalizedDescription);
         }
 
-        private void RegisterRowError(TransactionImportResultDto result, int lineNumber, string message)
+        private void RegisterRejectedRow(TransactionImportResultDto result, int lineNumber, string message)
         {
+            result.RejectedCount++;
             result.SkippedCount++;
-            result.ErrorCount++;
+            result.ErrorCount = result.RejectedCount;
 
             if (result.Errors.Count < MaxErrorMessages)
             {
@@ -560,6 +677,27 @@ namespace Vizora.Services
             }
 
             _logger.LogWarning("CSV import row skipped at line {LineNumber}: {Reason}", lineNumber, message);
+        }
+
+        private static void RegisterDuplicate(TransactionImportResultDto result)
+        {
+            result.DuplicateCount++;
+            result.SkippedCount++;
+        }
+
+        private static TransactionImportStatus ResolveImportStatus(TransactionImportResultDto result)
+        {
+            if (result.RejectedCount > 0 && result.ImportedCount == 0)
+            {
+                return TransactionImportStatus.Failed;
+            }
+
+            if (result.DuplicateCount > 0 || result.RejectedCount > 0)
+            {
+                return TransactionImportStatus.PartialSuccess;
+            }
+
+            return TransactionImportStatus.Success;
         }
 
         private async Task TryLogAuditAsync(AuditLogRequest request)
@@ -641,10 +779,15 @@ namespace Vizora.Services
             return $"{name.Trim().ToLowerInvariant()}|{type}";
         }
 
-        private static string BuildDuplicateKey(DateTime date, decimal amount, string? description)
+        private static string BuildDuplicateKey(
+            DateTime date,
+            decimal amount,
+            int categoryId,
+            TransactionType type,
+            string? description)
         {
             var normalizedDescription = (description ?? string.Empty).Trim().ToLowerInvariant();
-            return $"{date:yyyy-MM-dd}|{amount:0.00}|{normalizedDescription}";
+            return $"{date:yyyy-MM-dd}|{amount:0.00}|{categoryId}|{type}|{normalizedDescription}";
         }
 
         private static string? NormalizeDescription(string? value)

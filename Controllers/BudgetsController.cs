@@ -99,6 +99,7 @@ namespace Vizora.Controllers
             var model = new BudgetUpsertViewModel
             {
                 Id = budget.Id,
+                RowVersion = budget.RowVersion,
                 CategoryId = budget.CategoryId,
                 PlannedAmount = budget.PlannedAmount,
                 PeriodType = budget.BudgetPeriod.Type,
@@ -178,6 +179,7 @@ namespace Vizora.Controllers
         {
             return new BudgetUpsertRequest
             {
+                RowVersion = model.RowVersion,
                 CategoryId = model.CategoryId,
                 PlannedAmount = model.PlannedAmount,
                 PeriodType = model.PeriodType,

@@ -2,17 +2,74 @@
     ViewData["Title"] = "Reports";
 }
 
-<h1 class="mb-4">Reports</h1>
+<section class="vz-content">
+    <header class="vz-content-header">
+        <div>
+            <p class="vz-content-kicker">Data Tools</p>
+            <h1>Reports</h1>
+        </div>
+    </header>
 
-<div class="card">
-    <div class="card-body">
-        <h4 class="card-title">Transaction Export</h4>
-        <p class="card-text">
-            Download a CSV file containing your user-scoped transactions for external analysis.
-        </p>
+    @if (TempData["ImportSummary"] is string importSummary)
+    {
+        <section class="vz-panel">
+            <div class="alert alert-success mb-0" role="status">@importSummary</div>
+            @if (TempData["ImportErrors"] is string importErrors)
+            {
+                <div class="alert alert-warning mt-2 mb-0" role="status">@importErrors</div>
+            }
+        </section>
+    }
+    else if (TempData["ImportError"] is string importError)
+    {
+        <section class="vz-panel">
+            <div class="alert alert-danger mb-0" role="alert">@importError</div>
+        </section>
+    }
 
-        <a asp-controller="Reports" asp-action="ExportTransactionsCsv" class="btn btn-success">
-            Export Transactions CSV
-        </a>
+    <div class="row g-3">
+        <div class="col-12 col-lg-6">
+            <section class="vz-panel h-100">
+                <h2 class="h5 mb-2">Export Transactions</h2>
+                <p class="text-muted mb-3">
+                    Download a CSV file containing your user-scoped transactions for external analysis.
+                </p>
+                <a asp-controller="Reports" asp-action="ExportTransactionsCsv" class="btn btn-success">
+                    Export Transactions CSV
+                </a>
+            </section>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <section class="vz-panel h-100">
+                <h2 class="h5 mb-2">Import Transactions</h2>
+                <p class="text-muted mb-3">
+                    Upload a CSV file containing transaction records.
+                </p>
+
+                <form asp-controller="Transactions"
+                      asp-action="Import"
+                      method="post"
+                      enctype="multipart/form-data"
+                      class="d-flex flex-column gap-2">
+                    <input type="file"
+                           name="csvFile"
+                           accept=".csv,text/csv"
+                           class="form-control"
+                           aria-label="Select CSV file to import"
+                           required />
+                    <div>
+                        <button type="submit" class="btn btn-primary">Import Transactions CSV</button>
+                    </div>
+                </form>
+            </section>
+        </div>
     </div>
-</div>
+
+    <section class="vz-panel mt-3">
+        <h2 class="h5 mb-2">Analytics Tools</h2>
+        <p class="text-muted mb-0">
+            Use dashboards and transaction filters to generate category and spending trend reports.
+        </p>
+    </section>
+</section>

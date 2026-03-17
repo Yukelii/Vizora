@@ -229,6 +229,12 @@ namespace Vizora.Services
         public async Task<bool> UpdateAsync(int id, BudgetUpsertRequest request)
         {
             var userId = _userContextService.GetRequiredUserId();
+
+            if (request.RowVersion == null || request.RowVersion.Length == 0)
+            {
+                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+            }
+
             var budget = await _context.Budgets
                 .Include(b => b.BudgetPeriod)
                 .FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
@@ -238,6 +244,7 @@ namespace Vizora.Services
                 return false;
             }
 
+            _context.Entry(budget).Property(b => b.RowVersion).OriginalValue = request.RowVersion;
             var oldValues = BuildBudgetAuditState(budget, budget.BudgetPeriod);
             var validatedRequest = await ValidateAndNormalizeAsync(userId, request);
 
@@ -269,7 +276,16 @@ namespace Vizora.Services
             budget.PlannedAmount = validatedRequest.PlannedAmount;
             budget.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new InvalidOperationException(
+                    "This record was modified by another user. Please reload and try again.",
+                    ex);
+            }
             await RemoveBudgetPeriodIfUnusedAsync(userId, originalBudgetPeriodId, budget.BudgetPeriodId);
 
             await TryLogAuditAsync(new AuditLogRequest

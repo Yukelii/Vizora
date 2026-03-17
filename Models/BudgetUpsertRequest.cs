@@ -2,6 +2,8 @@ namespace Vizora.Models
 {
     public class BudgetUpsertRequest
     {
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         public int CategoryId { get; set; }
 
         public decimal PlannedAmount { get; set; }

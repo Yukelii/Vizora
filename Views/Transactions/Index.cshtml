@@ -22,38 +22,8 @@
                class="btn btn-primary"
                data-modal="true"
                data-modal-title="Add Transaction">Add Transaction</a>
-
-            <form asp-action="Import"
-                  method="post"
-                  enctype="multipart/form-data"
-                  class="d-flex flex-wrap align-items-center gap-2">
-                <input type="file"
-                       name="csvFile"
-                       accept=".csv,text/csv"
-                       class="form-control form-control-sm"
-                       aria-label="Select CSV file to import"
-                       required />
-                <button type="submit" class="btn btn-outline-primary btn-sm">Import CSV</button>
-            </form>
         </div>
     </header>
-
-    @if (TempData["ImportSummary"] is string importSummary)
-    {
-        <section class="vz-panel">
-            <div class="alert alert-success mb-0" role="status">@importSummary</div>
-            @if (TempData["ImportErrors"] is string importErrors)
-            {
-                <div class="alert alert-warning mt-2 mb-0" role="status">@importErrors</div>
-            }
-        </section>
-    }
-    else if (TempData["ImportError"] is string importError)
-    {
-        <section class="vz-panel">
-            <div class="alert alert-danger mb-0" role="alert">@importError</div>
-        </section>
-    }
 
     <section class="vz-panel">
         <form class="vz-transactions-filter" method="get" asp-action="Index">

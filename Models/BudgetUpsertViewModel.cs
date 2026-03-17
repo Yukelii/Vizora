@@ -6,6 +6,8 @@ namespace Vizora.Models
     {
         public int? Id { get; set; }
 
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         [Required]
         [Display(Name = "Category")]
         public int CategoryId { get; set; }

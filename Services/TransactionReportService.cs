@@ -52,9 +52,9 @@ namespace Vizora.Services
                     row.Id,
                     row.TransactionDate.ToString("yyyy-MM-dd"),
                     row.Type,
-                    EscapeCsv(row.Category?.Name ?? "Uncategorized"),
+                    CsvExportSecurityHelper.SanitizeAndEscape(row.Category?.Name ?? "Uncategorized"),
                     row.Amount.ToString("0.00", CultureInfo.InvariantCulture),
-                    EscapeCsv(row.Description ?? string.Empty)));
+                    CsvExportSecurityHelper.SanitizeAndEscape(row.Description ?? string.Empty)));
             }
 
             await TryLogAuditAsync(new AuditLogRequest
@@ -69,16 +69,6 @@ namespace Vizora.Services
             });
 
             return Encoding.UTF8.GetBytes(csv.ToString());
-        }
-
-        private static string EscapeCsv(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return "\"\"";
-            }
-
-            return $"\"{value.Replace("\"", "\"\"")}\"";
         }
 
         private async Task TryLogAuditAsync(AuditLogRequest request)

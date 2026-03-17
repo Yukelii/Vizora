@@ -24,6 +24,8 @@ namespace Vizora.Data
 
         public DbSet<RecurringTransaction> RecurringTransactions { get; set; }
 
+        public DbSet<ImportExecutionLock> ImportExecutionLocks { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -46,11 +48,17 @@ namespace Vizora.Data
                 entity.Property(c => c.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                entity.Property(c => c.RowVersion)
+                    .IsConcurrencyToken()
+                    .ValueGeneratedNever();
+
                 entity.HasOne(c => c.User)
                     .WithMany(u => u.Categories)
                     .HasForeignKey(c => c.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasAlternateKey(c => new { c.Id, c.UserId });
+                entity.HasIndex(c => c.UserId);
                 entity.HasIndex(c => new { c.UserId, c.Name, c.Type })
                     .IsUnique();
             });
@@ -81,9 +89,14 @@ namespace Vizora.Data
                 entity.Property(t => t.UpdatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                entity.Property(t => t.RowVersion)
+                    .IsConcurrencyToken()
+                    .ValueGeneratedNever();
+
                 entity.HasOne(t => t.Category)
                     .WithMany(c => c.Transactions)
-                    .HasForeignKey(t => t.CategoryId)
+                    .HasForeignKey(t => new { t.CategoryId, t.UserId })
+                    .HasPrincipalKey(c => new { c.Id, c.UserId })
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(t => t.User)
@@ -91,6 +104,7 @@ namespace Vizora.Data
                     .HasForeignKey(t => t.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasIndex(t => t.UserId);
                 entity.HasIndex(t => new { t.UserId, t.TransactionDate });
                 entity.HasIndex(t => new { t.UserId, t.Type });
                 entity.HasIndex(t => new { t.UserId, t.CategoryId });
@@ -121,6 +135,7 @@ namespace Vizora.Data
                     .HasForeignKey(bp => bp.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasAlternateKey(bp => new { bp.Id, bp.UserId });
                 entity.HasIndex(bp => new { bp.UserId, bp.Type, bp.StartDate, bp.EndDate })
                     .IsUnique();
 
@@ -144,6 +159,10 @@ namespace Vizora.Data
                 entity.Property(b => b.UpdatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                entity.Property(b => b.RowVersion)
+                    .IsConcurrencyToken()
+                    .ValueGeneratedNever();
+
                 entity.HasOne(b => b.User)
                     .WithMany(u => u.Budgets)
                     .HasForeignKey(b => b.UserId)
@@ -151,17 +170,21 @@ namespace Vizora.Data
 
                 entity.HasOne(b => b.Category)
                     .WithMany(c => c.Budgets)
-                    .HasForeignKey(b => b.CategoryId)
+                    .HasForeignKey(b => new { b.CategoryId, b.UserId })
+                    .HasPrincipalKey(c => new { c.Id, c.UserId })
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(b => b.BudgetPeriod)
                     .WithMany(bp => bp.Budgets)
-                    .HasForeignKey(b => b.BudgetPeriodId)
+                    .HasForeignKey(b => new { b.BudgetPeriodId, b.UserId })
+                    .HasPrincipalKey(bp => new { bp.Id, bp.UserId })
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasIndex(b => b.UserId);
                 entity.HasIndex(b => new { b.UserId, b.CategoryId, b.BudgetPeriodId })
                     .IsUnique();
                 entity.HasIndex(b => new { b.UserId, b.BudgetPeriodId });
+                entity.HasIndex(b => new { b.BudgetPeriodId, b.UserId });
 
                 entity.ToTable(t =>
                     t.HasCheckConstraint("CK_Budgets_PlannedAmount_Positive", "\"PlannedAmount\" > 0"));
@@ -200,6 +223,10 @@ namespace Vizora.Data
                 entity.Property(rt => rt.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                entity.Property(rt => rt.RowVersion)
+                    .IsConcurrencyToken()
+                    .ValueGeneratedNever();
+
                 entity.HasOne(rt => rt.User)
                     .WithMany(u => u.RecurringTransactions)
                     .HasForeignKey(rt => rt.UserId)
@@ -207,9 +234,11 @@ namespace Vizora.Data
 
                 entity.HasOne(rt => rt.Category)
                     .WithMany(c => c.RecurringTransactions)
-                    .HasForeignKey(rt => rt.CategoryId)
+                    .HasForeignKey(rt => new { rt.CategoryId, rt.UserId })
+                    .HasPrincipalKey(c => new { c.Id, c.UserId })
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasIndex(rt => rt.UserId);
                 entity.HasIndex(rt => new { rt.UserId, rt.IsActive, rt.NextRunDate });
                 entity.HasIndex(rt => new { rt.UserId, rt.CategoryId });
 
@@ -257,12 +286,78 @@ namespace Vizora.Data
                 entity.HasIndex(a => new { a.EntityType, a.EntityId, a.Timestamp });
             });
 
+            // Import execution locks enforce one active import per user at a time.
+            modelBuilder.Entity<ImportExecutionLock>(entity =>
+            {
+                entity.HasKey(lockRow => lockRow.UserId);
+
+                entity.Property(lockRow => lockRow.UserId)
+                    .IsRequired()
+                    .HasMaxLength(450);
+
+                entity.Property(lockRow => lockRow.AcquiredAt)
+                    .IsRequired()
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(lockRow => lockRow.User)
+                    .WithMany()
+                    .HasForeignKey(lockRow => lockRow.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
             // Track account creation timestamp for auditability.
             modelBuilder.Entity<ApplicationUser>(entity =>
             {
                 entity.Property(u => u.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
             });
+        }
+
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            ApplyRowVersionTokens();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        public override Task<int> SaveChangesAsync(
+            bool acceptAllChangesOnSuccess,
+            CancellationToken cancellationToken = default)
+        {
+            ApplyRowVersionTokens();
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        private void ApplyRowVersionTokens()
+        {
+            // PostgreSQL does not provide SQL Server-style rowversion columns, so tokens are rotated in-app.
+            var newToken = static () => Guid.NewGuid().ToByteArray();
+
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State is not (EntityState.Added or EntityState.Modified))
+                {
+                    continue;
+                }
+
+                switch (entry.Entity)
+                {
+                    case Transaction transaction:
+                        transaction.RowVersion = newToken();
+                        break;
+
+                    case Category category:
+                        category.RowVersion = newToken();
+                        break;
+
+                    case Budget budget:
+                        budget.RowVersion = newToken();
+                        break;
+
+                    case RecurringTransaction recurringTransaction:
+                        recurringTransaction.RowVersion = newToken();
+                        break;
+                }
+            }
         }
     }
 }

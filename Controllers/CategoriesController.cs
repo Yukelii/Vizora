@@ -88,6 +88,7 @@ namespace Vizora.Controllers
             var model = new CategoryUpsertViewModel
             {
                 Id = category.Id,
+                RowVersion = category.RowVersion,
                 Name = category.Name,
                 Type = category.Type
             };
@@ -112,6 +113,7 @@ namespace Vizora.Controllers
             var category = new Category
             {
                 Id = id,
+                RowVersion = model.RowVersion,
                 Name = model.Name,
                 Type = model.Type
             };

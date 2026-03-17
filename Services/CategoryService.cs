@@ -97,6 +97,11 @@ namespace Vizora.Services
             var userId = _userContextService.GetRequiredUserId();
             var normalizedName = NormalizeName(category.Name);
 
+            if (category.RowVersion == null || category.RowVersion.Length == 0)
+            {
+                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+            }
+
             var existing = await _context.Categories
                 .FirstOrDefaultAsync(c => c.Id == category.Id && c.UserId == userId);
 
@@ -105,6 +110,7 @@ namespace Vizora.Services
                 return false;
             }
 
+            _context.Entry(existing).Property(c => c.RowVersion).OriginalValue = category.RowVersion;
             var oldValues = BuildCategoryAuditState(existing);
 
             // Prevent duplicate name/type collisions after updates.
@@ -122,7 +128,16 @@ namespace Vizora.Services
             existing.Name = normalizedName;
             existing.Type = category.Type;
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new InvalidOperationException(
+                    "This record was modified by another user. Please reload and try again.",
+                    ex);
+            }
 
             await TryLogAuditAsync(new AuditLogRequest
             {

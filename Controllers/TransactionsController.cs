@@ -12,15 +12,18 @@ namespace Vizora.Controllers
         private readonly ITransactionService _transactionService;
         private readonly ICategoryService _categoryService;
         private readonly ITransactionImportService _transactionImportService;
+        private readonly ILogger<TransactionsController> _logger;
 
         public TransactionsController(
             ITransactionService transactionService,
             ICategoryService categoryService,
-            ITransactionImportService transactionImportService)
+            ITransactionImportService transactionImportService,
+            ILogger<TransactionsController> logger)
         {
             _transactionService = transactionService;
             _categoryService = categoryService;
             _transactionImportService = transactionImportService;
+            _logger = logger;
         }
 
         public async Task<IActionResult> Index([FromQuery] TransactionListQuery query)
@@ -139,6 +142,7 @@ namespace Vizora.Controllers
             var model = new TransactionUpsertViewModel
             {
                 Id = transaction.Id,
+                RowVersion = transaction.RowVersion,
                 CategoryId = transaction.CategoryId,
                 Amount = transaction.Amount,
                 Description = transaction.Description,
@@ -168,6 +172,7 @@ namespace Vizora.Controllers
             var transaction = new Transaction
             {
                 Id = id,
+                RowVersion = model.RowVersion,
                 CategoryId = model.CategoryId,
                 Amount = model.Amount,
                 Description = model.Description,
@@ -229,13 +234,14 @@ namespace Vizora.Controllers
             if (csvFile == null || csvFile.Length <= 0)
             {
                 TempData["ImportError"] = "Please select a non-empty CSV file.";
-                return RedirectToAction(nameof(Index));
+                return RedirectToAction("Index", "Reports");
             }
 
             try
             {
                 var result = await _transactionImportService.ImportCsvAsync(csvFile);
-                TempData["ImportSummary"] = $"Imported: {result.ImportedCount} | Skipped: {result.SkippedCount} | Errors: {result.ErrorCount}";
+                TempData["ImportSummary"] =
+                    $"Status: {result.Status} | Imported: {result.ImportedCount} | Duplicates: {result.DuplicateCount} | Rejected: {result.RejectedCount} | Processed: {result.ProcessedCount}";
 
                 if (result.Errors.Count > 0)
                 {
@@ -246,8 +252,13 @@ namespace Vizora.Controllers
             {
                 TempData["ImportError"] = ex.Message;
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected import failure reached controller boundary.");
+                TempData["ImportError"] = "Import failed due to an unexpected error. Please try again.";
+            }
 
-            return RedirectToAction(nameof(Index));
+            return RedirectToAction("Index", "Reports");
         }
 
         private async Task PopulateCategoryDropdownAsync(int? selectedCategoryId)

@@ -301,6 +301,11 @@ namespace vizora.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -313,9 +318,11 @@ namespace vizora.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BudgetPeriodId");
+                    b.HasIndex("UserId");
 
-                    b.HasIndex("CategoryId");
+                    b.HasIndex("BudgetPeriodId", "UserId");
+
+                    b.HasIndex("CategoryId", "UserId");
 
                     b.HasIndex("UserId", "BudgetPeriodId");
 
@@ -386,6 +393,11 @@ namespace vizora.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -398,10 +410,28 @@ namespace vizora.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("UserId", "Name", "Type")
                         .IsUnique();
 
                     b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("Vizora.Models.ImportExecutionLock", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime>("AcquiredAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("ImportExecutionLocks");
                 });
 
             modelBuilder.Entity("Vizora.Models.RecurringTransaction", b =>
@@ -441,6 +471,11 @@ namespace vizora.Migrations
                     b.Property<DateTime>("NextRunDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -456,7 +491,9 @@ namespace vizora.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CategoryId");
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CategoryId", "UserId");
 
                     b.HasIndex("UserId", "CategoryId");
 
@@ -492,6 +529,11 @@ namespace vizora.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("character varying(250)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<DateTime>("TransactionDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -512,7 +554,9 @@ namespace vizora.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CategoryId");
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CategoryId", "UserId");
 
                     b.HasIndex("UserId", "CategoryId");
 
@@ -585,21 +629,23 @@ namespace vizora.Migrations
 
             modelBuilder.Entity("Vizora.Models.Budget", b =>
                 {
+                    b.HasOne("Vizora.Models.ApplicationUser", "User")
+                        .WithMany("Budgets")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Vizora.Models.BudgetPeriod", "BudgetPeriod")
                         .WithMany("Budgets")
-                        .HasForeignKey("BudgetPeriodId")
+                        .HasForeignKey("BudgetPeriodId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Vizora.Models.Category", "Category")
                         .WithMany("Budgets")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Vizora.Models.ApplicationUser", "User")
-                        .WithMany("Budgets")
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("CategoryId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -632,17 +678,29 @@ namespace vizora.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Vizora.Models.RecurringTransaction", b =>
+            modelBuilder.Entity("Vizora.Models.ImportExecutionLock", b =>
                 {
-                    b.HasOne("Vizora.Models.Category", "Category")
-                        .WithMany("RecurringTransactions")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                    b.HasOne("Vizora.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Vizora.Models.RecurringTransaction", b =>
+                {
                     b.HasOne("Vizora.Models.ApplicationUser", "User")
                         .WithMany("RecurringTransactions")
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vizora.Models.Category", "Category")
+                        .WithMany("RecurringTransactions")
+                        .HasForeignKey("CategoryId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -653,15 +711,16 @@ namespace vizora.Migrations
 
             modelBuilder.Entity("Vizora.Models.Transaction", b =>
                 {
-                    b.HasOne("Vizora.Models.Category", "Category")
-                        .WithMany("Transactions")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Vizora.Models.ApplicationUser", "User")
                         .WithMany("Transactions")
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vizora.Models.Category", "Category")
+                        .WithMany("Transactions")
+                        .HasForeignKey("CategoryId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 

@@ -16,8 +16,11 @@ appsettings.Development.json
 # .NET build outputs
 bin/
 obj/
+.vs/
+TestResults/
+coverage/
+diagnostics/
 
 # codex local build artifacts
 .codex-build-out/
 .codex-build-out-ownfk/
-
