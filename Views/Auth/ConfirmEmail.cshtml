@@ -1,14 +1,21 @@
 @{
     ViewData["Title"] = "Confirm Email";
     var statusMessage = ViewData["StatusMessage"]?.ToString() ?? "Email confirmation status is unavailable.";
+    var isSuccess = statusMessage.ToLowerInvariant().Contains("thank you");
 }
 
-<h1 class="mb-4">Confirm Email</h1>
+<div class="vz-auth-page">
+    <div class="vz-auth-content">
+        <section class="vz-auth-state-card">
+            <div class="vz-state-icon @(isSuccess ? "vz-state-icon-success" : "vz-state-icon-danger")">
+                @(isSuccess ? "OK" : "!")
+            </div>
+            <h1 class="vz-state-title">@(isSuccess ? "Email Confirmed!" : "Email Confirmation Failed")</h1>
+            <p class="vz-state-subtitle">@statusMessage</p>
 
-<div class="alert alert-info" role="alert">
-    @statusMessage
+            <div class="vz-auth-actions">
+                <a asp-action="Login" class="vz-btn-primary">Go to Login</a>
+            </div>
+        </section>
+    </div>
 </div>
-
-<p>
-    <a asp-action="Login" class="btn btn-primary">Go to Login</a>
-</p>

@@ -49,6 +49,7 @@ builder.Services.AddAuthorization();
 builder.Services
     .AddOptions<EmailOptions>()
     .Bind(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.AddSingleton<IAccountSmtpClientFactory, MailKitAccountSmtpClientFactory>();
 builder.Services.AddScoped<IAccountEmailService, AccountEmailService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<IUserContextService, HttpContextUserContextService>();

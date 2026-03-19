@@ -4,42 +4,50 @@
     ViewData["Title"] = "Sign In";
 }
 
-<h1 class="mb-4">Sign In</h1>
+<div class="vz-auth-page">
+    <div class="vz-auth-content">
+        <section class="vz-auth-card">
+            <div class="vz-auth-card-inner">
+                <h1 class="vz-auth-heading">Welcome back</h1>
+                <p class="vz-auth-subheading">Please enter your details to sign in.</p>
 
-<div class="row">
-    <div class="col-md-5">
-        <div class="card">
-            <div class="card-body">
-                <p class="text-muted">Sign in with your account to access your finance workspace.</p>
-
-                <form asp-action="Login" method="post">
-                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                <form asp-action="Login" method="post" class="vz-auth-form">
+                    <div asp-validation-summary="ModelOnly" class="vz-validation-summary"></div>
                     <input type="hidden" asp-for="ReturnUrl" />
 
-                    <div class="mb-3">
-                        <label asp-for="UserName" class="form-label"></label>
-                        <input asp-for="UserName" class="form-control" autocomplete="username" />
-                        <span asp-validation-for="UserName" class="text-danger"></span>
+                    <div class="vz-auth-field">
+                        <label asp-for="UserName" class="vz-auth-label"></label>
+                        <input asp-for="UserName" class="vz-auth-input" autocomplete="username" />
+                        <span asp-validation-for="UserName" class="vz-auth-validation"></span>
                     </div>
 
-                    <div class="mb-3">
-                        <label asp-for="Password" class="form-label"></label>
-                        <input asp-for="Password" class="form-control" autocomplete="current-password" />
-                        <span asp-validation-for="Password" class="text-danger"></span>
+                    <div class="vz-auth-field">
+                        <label asp-for="Password" class="vz-auth-label"></label>
+                        <input asp-for="Password" class="vz-auth-input" autocomplete="current-password" />
+                        <span asp-validation-for="Password" class="vz-auth-validation"></span>
                     </div>
 
-                    <div class="form-check mb-3">
-                        <input asp-for="RememberMe" class="form-check-input" />
-                        <label asp-for="RememberMe" class="form-check-label"></label>
+                    <div class="vz-auth-row-between">
+                        <label class="vz-auth-check" asp-for="RememberMe">
+                            <input asp-for="RememberMe" class="vz-auth-checkbox" />
+                            <span>@Html.DisplayNameFor(model => model.RememberMe)</span>
+                        </label>
+                        <a asp-action="ForgotPassword" class="vz-auth-link">Forgot password?</a>
                     </div>
 
-                    <button type="submit" class="btn btn-primary">Sign In</button>
+                    <button type="submit" class="vz-btn-primary">Sign In</button>
                 </form>
-                <hr />
-                <p class="mb-1">No account yet? <a asp-action="Register">Create one</a></p>
-                <p class="mb-0"><a asp-action="ForgotPassword">Forgot your password?</a></p>
+
+                <p class="vz-auth-helper">
+                    Don't have an account?
+                    <a asp-action="Register">Register for an account</a>
+                </p>
             </div>
-        </div>
+            <div class="vz-auth-card-note">
+                <span class="vz-note-dot" aria-hidden="true"></span>
+                Secure Enterprise Authentication
+            </div>
+        </section>
     </div>
 </div>
 

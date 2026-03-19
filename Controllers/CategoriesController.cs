@@ -16,10 +16,28 @@ namespace Vizora.Controllers
             _categoryService = categoryService;
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index([FromQuery] CategoryListQuery query)
         {
-            var categories = await _categoryService.GetAllAsync();
-            return View(categories);
+            if (!Enum.IsDefined(typeof(CategoryListFilter), query.Filter))
+            {
+                query.Filter = CategoryListFilter.All;
+            }
+
+            var allCategories = await _categoryService.GetAllAsync();
+            var categories = query.Filter == CategoryListFilter.All
+                ? allCategories
+                : await _categoryService.GetAllAsync(query.Filter);
+
+            var model = new CategoriesIndexViewModel
+            {
+                Categories = categories,
+                Filter = query.Filter,
+                TotalCategories = allCategories.Count,
+                ExpenseCategories = allCategories.Count(c => c.Type == TransactionType.Expense),
+                IncomeCategories = allCategories.Count(c => c.Type == TransactionType.Income)
+            };
+
+            return View(model);
         }
 
         public async Task<IActionResult> Details(int? id)
@@ -56,7 +74,9 @@ namespace Vizora.Controllers
             var category = new Category
             {
                 Name = model.Name,
-                Type = model.Type
+                Type = model.Type,
+                IconKey = model.IconKey,
+                ColorKey = model.ColorKey
             };
 
             try
@@ -90,7 +110,9 @@ namespace Vizora.Controllers
                 Id = category.Id,
                 RowVersion = category.RowVersion,
                 Name = category.Name,
-                Type = category.Type
+                Type = category.Type,
+                IconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(category.IconKey),
+                ColorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(category.ColorKey)
             };
 
             return View(model);
@@ -115,7 +137,9 @@ namespace Vizora.Controllers
                 Id = id,
                 RowVersion = model.RowVersion,
                 Name = model.Name,
-                Type = model.Type
+                Type = model.Type,
+                IconKey = model.IconKey,
+                ColorKey = model.ColorKey
             };
 
             try

@@ -161,9 +161,12 @@ namespace Vizora.Controllers
                 return View(model);
             }
 
-            await SendEmailConfirmationAsync(registrationResult.User);
+            var confirmationEmailSent = await SendEmailConfirmationAsync(registrationResult.User);
             SetPendingConfirmationEmail(registrationResult.User.Email);
-            SetConfirmationNotice("Account created. Check your email to confirm your account.");
+            SetConfirmationNotice(
+                confirmationEmailSent
+                    ? "Account created. Check your email to confirm your account."
+                    : "Account created, but we could not send a confirmation email. Please verify SMTP settings, then use Resend Email.");
 
             return RedirectToAction(nameof(EmailConfirmationPending));
         }
@@ -185,19 +188,14 @@ namespace Vizora.Controllers
                 return View();
             }
 
-            string decodedToken;
-            try
+            var decodedToken = DecodeTokenOrOriginal(code);
+            var result = await _accountLifecycleService.ConfirmEmailAsync(user, decodedToken);
+            if (!result.Succeeded && !string.Equals(decodedToken, code, StringComparison.Ordinal))
             {
-                // Tokens are URL-safe encoded in links and must be decoded before Identity can consume them.
-                decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
-            }
-            catch (FormatException)
-            {
-                ViewData["StatusMessage"] = "Invalid email confirmation token.";
-                return View();
+                // Backward-compatible fallback for links that already carry a decoded token format.
+                result = await _accountLifecycleService.ConfirmEmailAsync(user, code);
             }
 
-            var result = await _accountLifecycleService.ConfirmEmailAsync(user, decodedToken);
             ViewData["StatusMessage"] = result.Succeeded
                 ? "Thank you for confirming your email."
                 : "Email confirmation failed.";
@@ -218,6 +216,8 @@ namespace Vizora.Controllers
             {
                 return RedirectToAction(nameof(Login));
             }
+
+            ViewData["PendingConfirmationEmail"] = pendingEmail;
 
             if (TempData.TryGetValue(ConfirmationNoticeTempDataKey, out var statusMessage) && statusMessage is string message)
             {
@@ -240,19 +240,27 @@ namespace Vizora.Controllers
 
             var normalizedEmail = pendingEmail.Trim();
             var user = await _accountLifecycleService.FindByEmailAsync(normalizedEmail);
+            var resendAttempted = false;
+            var resendSucceeded = false;
             if (user != null)
             {
                 // Only resend while the email is still unconfirmed.
                 var emailConfirmed = await _accountLifecycleService.IsEmailConfirmedAsync(user);
                 if (!emailConfirmed)
                 {
-                    await SendEmailConfirmationAsync(user);
+                    resendAttempted = true;
+                    resendSucceeded = await SendEmailConfirmationAsync(user);
                 }
             }
 
             // Keep the pending email in TempData for follow-up resend attempts.
             SetPendingConfirmationEmail(normalizedEmail);
-            SetConfirmationNotice("If the account exists and still needs confirmation, a new confirmation email has been sent.");
+            SetConfirmationNotice(
+                resendAttempted
+                    ? (resendSucceeded
+                        ? "A new confirmation email has been sent."
+                        : "Unable to send confirmation email right now. Please verify SMTP settings and try again.")
+                    : "If the account exists and still needs confirmation, a new confirmation email has been sent.");
 
             return RedirectToAction(nameof(EmailConfirmationPending));
         }
@@ -314,16 +322,9 @@ namespace Vizora.Controllers
                 return BadRequest("A code and email are required for password reset.");
             }
 
-            string decodedToken;
-            try
-            {
-                // Reset password links carry an encoded token to keep it URL-safe.
-                decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
-            }
-            catch (FormatException)
-            {
-                return BadRequest("Invalid password reset token.");
-            }
+            // Reset password links usually carry URL-safe encoded tokens,
+            // but we also accept legacy/plain encoded forms for reliability.
+            var decodedToken = DecodeTokenOrOriginal(code);
 
             return View(new ResetPasswordViewModel
             {
@@ -424,7 +425,7 @@ namespace Vizora.Controllers
             return RedirectToAction(nameof(Login));
         }
 
-        private async Task SendEmailConfirmationAsync(ApplicationUser user)
+        private async Task<bool> SendEmailConfirmationAsync(ApplicationUser user)
         {
             var emailConfirmationToken = await _accountLifecycleService.GenerateEmailConfirmationTokenAsync(user);
             var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(emailConfirmationToken));
@@ -438,8 +439,10 @@ namespace Vizora.Controllers
 
             if (!string.IsNullOrWhiteSpace(callbackUrl))
             {
-                await _accountLifecycleService.SendEmailConfirmationAsync(user, callbackUrl);
+                return await _accountLifecycleService.SendEmailConfirmationAsync(user, callbackUrl);
             }
+
+            return false;
         }
 
         private IActionResult RedirectToDashboard()
@@ -460,6 +463,18 @@ namespace Vizora.Controllers
         private void SetConfirmationNotice(string message)
         {
             TempData[ConfirmationNoticeTempDataKey] = message;
+        }
+
+        private static string DecodeTokenOrOriginal(string token)
+        {
+            try
+            {
+                return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
+            }
+            catch (FormatException)
+            {
+                return token;
+            }
         }
     }
 }

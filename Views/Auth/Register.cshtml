@@ -4,47 +4,71 @@
     ViewData["Title"] = "Register";
 }
 
-<h1 class="mb-4">Create Account</h1>
+<div class="vz-auth-page">
+    <header class="vz-auth-topbar vz-auth-topbar-end">
+        <a asp-action="Login" class="vz-auth-top-action">Login</a>
+    </header>
 
-<div class="row">
-    <div class="col-md-5">
-        <div class="card">
-            <div class="card-body">
-                <form asp-action="Register" method="post">
-                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
-                    <input type="hidden" asp-for="ReturnUrl" />
-
-                    <div class="mb-3">
-                        <label asp-for="UserName" class="form-label"></label>
-                        <input asp-for="UserName" class="form-control" autocomplete="username" />
-                        <span asp-validation-for="UserName" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Email" class="form-label"></label>
-                        <input asp-for="Email" class="form-control" autocomplete="email" />
-                        <span asp-validation-for="Email" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Password" class="form-label"></label>
-                        <input asp-for="Password" class="form-control" autocomplete="new-password" />
-                        <span asp-validation-for="Password" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="ConfirmPassword" class="form-label"></label>
-                        <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
-                        <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">Register</button>
-                </form>
-                <hr />
-                <p class="text-muted small mb-2">After registration, an email confirmation link will be sent if email delivery is configured.</p>
-                <p class="mb-0">Already have an account? <a asp-action="Login">Sign in</a></p>
+    <div class="vz-auth-content">
+        <section class="vz-auth-register-shell">
+            <div class="vz-auth-register-header">
+                <h1 class="vz-auth-heading">Create your account</h1>
+                <p class="vz-auth-subheading">
+                    Join Vizora to start managing your data securely.
+                </p>
+                <p class="vz-auth-subheading-note">
+                    A confirmation email will be sent to verify your address.
+                </p>
             </div>
-        </div>
+
+            <form asp-action="Register" method="post" class="vz-auth-form vz-auth-form-surface">
+                <div asp-validation-summary="ModelOnly" class="vz-validation-summary"></div>
+                <input type="hidden" asp-for="ReturnUrl" />
+
+                <div class="vz-auth-field">
+                    <label asp-for="UserName" class="vz-auth-label"></label>
+                    <input asp-for="UserName" class="vz-auth-input" autocomplete="username" />
+                    <span asp-validation-for="UserName" class="vz-auth-validation"></span>
+                </div>
+
+                <div class="vz-auth-field">
+                    <label asp-for="Email" class="vz-auth-label">Email Address</label>
+                    <input asp-for="Email" class="vz-auth-input" autocomplete="email" placeholder="name@company.com" />
+                    <span asp-validation-for="Email" class="vz-auth-validation"></span>
+                </div>
+
+                <div class="vz-auth-password-grid">
+                    <div class="vz-auth-field">
+                        <label asp-for="Password" class="vz-auth-label"></label>
+                        <input asp-for="Password" class="vz-auth-input" autocomplete="new-password" placeholder="Create password" />
+                        <span asp-validation-for="Password" class="vz-auth-validation"></span>
+                    </div>
+
+                    <div class="vz-auth-field">
+                        <label asp-for="ConfirmPassword" class="vz-auth-label"></label>
+                        <input asp-for="ConfirmPassword" class="vz-auth-input" autocomplete="new-password" placeholder="Repeat password" />
+                        <span asp-validation-for="ConfirmPassword" class="vz-auth-validation"></span>
+                    </div>
+                </div>
+
+                <label class="vz-auth-check" for="termsAcknowledgement">
+                    <input id="termsAcknowledgement" type="checkbox" class="vz-auth-checkbox" />
+                    <span>
+                        I agree to the
+                        <a asp-controller="Home" asp-action="Privacy" class="vz-auth-link">Terms of Service</a>
+                        and
+                        <a asp-controller="Home" asp-action="Privacy" class="vz-auth-link">Privacy Policy</a>.
+                    </span>
+                </label>
+
+                <button type="submit" class="vz-btn-primary">Create Account</button>
+            </form>
+
+            <p class="vz-auth-helper">
+                Already have an account?
+                <a asp-action="Login">Sign in</a>
+            </p>
+        </section>
     </div>
 </div>
 

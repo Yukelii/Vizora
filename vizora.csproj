@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>vizora-a8f4e7f5-53a9-4df2-8b4a-4bbd1d460f33</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

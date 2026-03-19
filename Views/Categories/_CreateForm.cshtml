@@ -1,22 +1,107 @@
 @model Vizora.Models.CategoryUpsertViewModel
+@{
+    var isExpenseSelected = Model.Type == TransactionType.Expense;
+    var isIncomeSelected = !isExpenseSelected;
+    var selectedIconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(Model.IconKey);
+    var shouldExpandIconList = CategoryVisualCatalog.MoreIconKeys.Contains(selectedIconKey, StringComparer.OrdinalIgnoreCase);
+}
 
-<form asp-action="Create" method="post" data-modal-form="create-category">
-    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+<form asp-action="Create" method="post" data-modal-form="create-category" class="vz-cat-modal-form">
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="Name" class="form-label"></label>
-        <input asp-for="Name" class="form-control" />
+    <div class="vz-cat-modal-field">
+        <label asp-for="Name" class="form-label">Category Name</label>
+        <input asp-for="Name" class="form-control" placeholder="e.g. Groceries" />
         <span asp-validation-for="Name" class="text-danger"></span>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Type" class="form-label"></label>
-        <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<TransactionType>()"></select>
+    <div class="vz-cat-modal-field">
+        <label asp-for="Type" class="form-label">Category Type</label>
+        <div class="vz-cat-type-toggle" role="radiogroup" aria-label="Category type">
+            <label class="vz-cat-type-option">
+                <input class="vz-cat-type-input"
+                       type="radio"
+                       name="Type"
+                       value="@((int)TransactionType.Expense)"
+                       checked="@(isExpenseSelected ? "checked" : null)" />
+                <span class="vz-cat-type-pill">Expense</span>
+            </label>
+            <label class="vz-cat-type-option">
+                <input class="vz-cat-type-input"
+                       type="radio"
+                       name="Type"
+                       value="@((int)TransactionType.Income)"
+                       checked="@(isIncomeSelected ? "checked" : null)" />
+                <span class="vz-cat-type-pill">Income</span>
+            </label>
+        </div>
         <span asp-validation-for="Type" class="text-danger"></span>
     </div>
 
-    <div class="d-flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-primary">Create</button>
+    <div class="vz-cat-modal-field">
+        <label asp-for="IconKey" class="form-label">Icon</label>
+        <div class="vz-cat-icon-picker" role="radiogroup" aria-label="Category icon selection">
+            @foreach (var iconKey in CategoryVisualCatalog.SuggestedIconKeys)
+            {
+                var optionId = $"create_icon_{iconKey}";
+                <label class="vz-cat-choice-tile" for="@optionId">
+                    <input id="@optionId"
+                           class="vz-cat-choice-input"
+                           type="radio"
+                           asp-for="IconKey"
+                           value="@iconKey"
+                           aria-label="@CategoryVisualCatalog.GetIconLabel(iconKey)" />
+                    <span class="vz-cat-icon-option" aria-hidden="true" title="@CategoryVisualCatalog.GetIconLabel(iconKey)">
+                        <partial name="_CategoryIconSvg" model="iconKey" />
+                    </span>
+                </label>
+            }
+            <details class="vz-cat-icon-more" open="@(shouldExpandIconList ? "open" : null)">
+                <summary class="vz-cat-icon-more-toggle" aria-label="Show more icon choices">+</summary>
+                <div class="vz-cat-icon-picker">
+                    @foreach (var iconKey in CategoryVisualCatalog.MoreIconKeys)
+                    {
+                        var optionId = $"create_icon_more_{iconKey}";
+                        <label class="vz-cat-choice-tile" for="@optionId">
+                            <input id="@optionId"
+                                   class="vz-cat-choice-input"
+                                   type="radio"
+                                   asp-for="IconKey"
+                                   value="@iconKey"
+                                   aria-label="@CategoryVisualCatalog.GetIconLabel(iconKey)" />
+                            <span class="vz-cat-icon-option" aria-hidden="true" title="@CategoryVisualCatalog.GetIconLabel(iconKey)">
+                                <partial name="_CategoryIconSvg" model="iconKey" />
+                            </span>
+                        </label>
+                    }
+                </div>
+            </details>
+        </div>
+        <span asp-validation-for="IconKey" class="text-danger"></span>
+    </div>
+
+    <div class="vz-cat-modal-field">
+        <label asp-for="ColorKey" class="form-label">Color</label>
+        <div class="vz-cat-color-picker" role="radiogroup" aria-label="Category color selection">
+            @foreach (var colorKey in CategoryVisualCatalog.ColorKeys)
+            {
+                var optionId = $"create_color_{colorKey}";
+                <label class="vz-cat-color-choice" for="@optionId">
+                    <input id="@optionId"
+                           class="vz-cat-choice-input"
+                           type="radio"
+                           asp-for="ColorKey"
+                           value="@colorKey"
+                           aria-label="@CategoryVisualCatalog.GetColorLabel(colorKey)" />
+                    <span class="vz-cat-color-option vz-cat-color-@colorKey" aria-hidden="true" title="@CategoryVisualCatalog.GetColorLabel(colorKey)"></span>
+                </label>
+            }
+        </div>
+        <span asp-validation-for="ColorKey" class="text-danger"></span>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 justify-content-end vz-cat-modal-actions">
         <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Category</button>
     </div>
 </form>

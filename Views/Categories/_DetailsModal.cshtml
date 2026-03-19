@@ -1,12 +1,33 @@
 @model Vizora.Models.Category
 
+@{
+    var iconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(Model.IconKey);
+    var colorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(Model.ColorKey);
+}
+
 <div>
+    <div class="vz-cat-name-cell mb-3">
+        <span class="vz-cat-icon-tile vz-cat-color-@colorKey" aria-hidden="true">
+            <partial name="_CategoryIconSvg" model="iconKey" />
+        </span>
+        <div>
+            <span class="vz-cat-name">@Model.Name</span>
+            <span class="vz-cat-meta">@CategoryVisualCatalog.GetIconLabel(iconKey) &middot; @CategoryVisualCatalog.GetColorLabel(colorKey)</span>
+        </div>
+    </div>
+
     <dl class="row mb-4">
         <dt class="col-sm-4">Name</dt>
         <dd class="col-sm-8">@Model.Name</dd>
 
         <dt class="col-sm-4">Type</dt>
         <dd class="col-sm-8">@Model.Type</dd>
+
+        <dt class="col-sm-4">Icon</dt>
+        <dd class="col-sm-8">@CategoryVisualCatalog.GetIconLabel(iconKey)</dd>
+
+        <dt class="col-sm-4">Color</dt>
+        <dd class="col-sm-8">@CategoryVisualCatalog.GetColorLabel(colorKey)</dd>
 
         <dt class="col-sm-4">Created At</dt>
         <dd class="col-sm-8">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</dd>

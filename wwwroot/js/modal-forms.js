@@ -262,10 +262,10 @@
         const derivedTypeContainer = form.querySelector("#derivedTypeContainer");
         const derivedTypeBadge = form.querySelector("#derivedTypeBadge");
         const categoryMapElement = form.querySelector("#CategoryTypeMapJson");
+        const incomeTypeChip = form.querySelector("[data-vz-role='type-chip-income']");
+        const expenseTypeChip = form.querySelector("[data-vz-role='type-chip-expense']");
 
         if (!(categorySelect instanceof HTMLSelectElement) ||
-            !(derivedTypeContainer instanceof HTMLElement) ||
-            !(derivedTypeBadge instanceof HTMLElement) ||
             !(categoryMapElement instanceof HTMLInputElement)) {
             return;
         }
@@ -277,19 +277,45 @@
             categoryTypeMap = {};
         }
 
-        const updateTypeBadge = () => {
-            const type = categoryTypeMap[categorySelect.value];
-
-            if (!type) {
-                derivedTypeContainer.classList.add("d-none");
-                derivedTypeBadge.textContent = "";
-                derivedTypeBadge.className = "badge";
-                return;
+        const applyTypeToggleState = (type) => {
+            if (incomeTypeChip instanceof HTMLElement) {
+                const isIncome = type === "Income";
+                incomeTypeChip.classList.toggle("is-active", isIncome);
+                incomeTypeChip.setAttribute("aria-pressed", isIncome ? "true" : "false");
             }
 
-            derivedTypeContainer.classList.remove("d-none");
-            derivedTypeBadge.textContent = type;
-            derivedTypeBadge.className = type === "Income" ? "badge bg-success" : "badge bg-danger";
+            if (expenseTypeChip instanceof HTMLElement) {
+                const isExpense = type === "Expense";
+                expenseTypeChip.classList.toggle("is-active", isExpense);
+                expenseTypeChip.setAttribute("aria-pressed", isExpense ? "true" : "false");
+            }
+        };
+
+        const updateTypeBadge = () => {
+            const mapValue = categoryTypeMap[categorySelect.value];
+            const type = mapValue === "Income" || mapValue === "Expense" ? mapValue : null;
+
+            if (derivedTypeContainer instanceof HTMLElement && derivedTypeBadge instanceof HTMLElement) {
+                const keepVisibleWhenEmpty = derivedTypeContainer.dataset.vzPersist === "true";
+
+                if (!type) {
+                    if (keepVisibleWhenEmpty) {
+                        derivedTypeContainer.classList.remove("d-none");
+                        derivedTypeBadge.textContent = "Select category";
+                        derivedTypeBadge.className = "badge text-bg-secondary";
+                    } else {
+                        derivedTypeContainer.classList.add("d-none");
+                        derivedTypeBadge.textContent = "";
+                        derivedTypeBadge.className = "badge";
+                    }
+                } else {
+                    derivedTypeContainer.classList.remove("d-none");
+                    derivedTypeBadge.textContent = type;
+                    derivedTypeBadge.className = type === "Income" ? "badge text-bg-success" : "badge text-bg-danger";
+                }
+            }
+
+            applyTypeToggleState(type);
         };
 
         categorySelect.addEventListener("change", updateTypeBadge);

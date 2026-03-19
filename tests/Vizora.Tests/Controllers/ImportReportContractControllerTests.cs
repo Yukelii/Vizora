@@ -157,7 +157,7 @@ public class ImportReportContractControllerTests
 
     private sealed class StubCategoryService : ICategoryService
     {
-        public Task<IReadOnlyList<Category>> GetAllAsync()
+        public Task<IReadOnlyList<Category>> GetAllAsync(CategoryListFilter filter = CategoryListFilter.All)
         {
             return Task.FromResult<IReadOnlyList<Category>>(Array.Empty<Category>());
         }

@@ -8,7 +8,7 @@ namespace Vizora.Services
 {
     public interface ICategoryService
     {
-        Task<IReadOnlyList<Category>> GetAllAsync();
+        Task<IReadOnlyList<Category>> GetAllAsync(CategoryListFilter filter = CategoryListFilter.All);
 
         Task<Category?> GetByIdAsync(int id);
 
@@ -38,14 +38,25 @@ namespace Vizora.Services
             _logger = logger;
         }
 
-        public async Task<IReadOnlyList<Category>> GetAllAsync()
+        public async Task<IReadOnlyList<Category>> GetAllAsync(CategoryListFilter filter = CategoryListFilter.All)
         {
             var userId = _userContextService.GetRequiredUserId();
 
             // Every query is strictly user-scoped to prevent cross-user data access.
-            return await _context.Categories
+            IQueryable<Category> categoriesQuery = _context.Categories
                 .AsNoTracking()
-                .Where(c => c.UserId == userId)
+                .Where(c => c.UserId == userId);
+
+            if (filter == CategoryListFilter.Expense)
+            {
+                categoriesQuery = categoriesQuery.Where(c => c.Type == TransactionType.Expense);
+            }
+            else if (filter == CategoryListFilter.Income)
+            {
+                categoriesQuery = categoriesQuery.Where(c => c.Type == TransactionType.Income);
+            }
+
+            return await categoriesQuery
                 .OrderBy(c => c.Type)
                 .ThenBy(c => c.Name)
                 .ToListAsync();
@@ -78,6 +89,8 @@ namespace Vizora.Services
 
             category.Name = normalizedName;
             category.UserId = userId;
+            category.IconKey = NormalizeAndValidateIconKey(category.IconKey);
+            category.ColorKey = NormalizeAndValidateColorKey(category.ColorKey);
             category.CreatedAt = DateTime.UtcNow;
 
             _context.Categories.Add(category);
@@ -127,6 +140,8 @@ namespace Vizora.Services
 
             existing.Name = normalizedName;
             existing.Type = category.Type;
+            existing.IconKey = NormalizeAndValidateIconKey(category.IconKey);
+            existing.ColorKey = NormalizeAndValidateColorKey(category.ColorKey);
 
             try
             {
@@ -204,12 +219,42 @@ namespace Vizora.Services
                 : name.Trim();
         }
 
+        private static string NormalizeAndValidateIconKey(string? iconKey)
+        {
+            var normalized = string.IsNullOrWhiteSpace(iconKey)
+                ? CategoryVisualCatalog.DefaultIconKey
+                : iconKey.Trim().ToLowerInvariant();
+
+            if (!CategoryVisualCatalog.IsValidIconKey(normalized))
+            {
+                throw new InvalidOperationException("Selected icon is not supported.");
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeAndValidateColorKey(string? colorKey)
+        {
+            var normalized = string.IsNullOrWhiteSpace(colorKey)
+                ? CategoryVisualCatalog.DefaultColorKey
+                : colorKey.Trim().ToLowerInvariant();
+
+            if (!CategoryVisualCatalog.IsValidColorKey(normalized))
+            {
+                throw new InvalidOperationException("Selected color is not supported.");
+            }
+
+            return normalized;
+        }
+
         private static object BuildCategoryAuditState(Category category)
         {
             return new
             {
                 category.Name,
-                Type = category.Type.ToString()
+                Type = category.Type.ToString(),
+                category.IconKey,
+                category.ColorKey
             };
         }
 

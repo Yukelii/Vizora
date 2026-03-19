@@ -1,30 +1,31 @@
 @{
     ViewData["Title"] = "Check Your Email";
     var statusMessage = ViewData["StatusMessage"]?.ToString();
+    var pendingEmail = ViewData["PendingConfirmationEmail"]?.ToString();
 }
 
-<h1 class="mb-4">Check Your Email</h1>
+<div class="vz-auth-page">
+    <div class="vz-auth-content">
+        <section class="vz-auth-state-card">
+            <div class="vz-state-icon">M</div>
+            <h1 class="vz-state-title">Check your email</h1>
+            <p class="vz-state-subtitle">
+                We've sent a confirmation link to
+                <strong>@(string.IsNullOrWhiteSpace(pendingEmail) ? "your account email" : pendingEmail)</strong>.
+                Please click the link to activate your account.
+            </p>
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-body">
-                <p class="text-muted">
-                    We sent a confirmation email. Confirm your account before signing in.
-                </p>
+            @if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                <div class="vz-inline-alert vz-inline-alert-info" role="alert">
+                    @statusMessage
+                </div>
+            }
 
-                @if (!string.IsNullOrWhiteSpace(statusMessage))
-                {
-                    <div class="alert alert-info" role="alert">
-                        @statusMessage
-                    </div>
-                }
-
-                <form asp-action="ResendConfirmationEmail" method="post">
-                    <button type="submit" class="btn btn-primary">Resend Confirmation Email</button>
-                    <a asp-action="Login" class="btn btn-secondary">Back to Login</a>
-                </form>
-            </div>
-        </div>
+            <form asp-action="ResendConfirmationEmail" method="post" class="vz-auth-actions">
+                <button type="submit" class="vz-btn-primary">Resend Email</button>
+                <a asp-action="Login" class="vz-btn-link">Back to Login</a>
+            </form>
+        </section>
     </div>
 </div>

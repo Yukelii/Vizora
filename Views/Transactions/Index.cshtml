@@ -7,94 +7,137 @@
     var endDateValue = Model.EndDate?.ToString("yyyy-MM-dd");
     var minAmountValue = Model.MinAmount?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
     var maxAmountValue = Model.MaxAmount?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-    var firstPage = Math.Max(1, Model.Page - 2);
-    var lastPage = Math.Min(Model.TotalPages, Model.Page + 2);
+    var firstRecord = Model.TotalCount > 0
+        ? ((Model.Page - 1) * Model.PageSize) + 1
+        : 0;
+    var lastRecord = Model.TotalCount > 0
+        ? Math.Min(Model.Page * Model.PageSize, Model.TotalCount)
+        : 0;
 }
 
-<section class="vz-content">
-    <header class="vz-content-header">
-        <div>
-            <p class="vz-content-kicker">Records</p>
+<section class="vz-content vz-trx-page">
+    <header class="vz-content-header vz-trx-header">
+        <div class="vz-trx-title-block">
             <h1>Transactions</h1>
+            <p class="vz-trx-subtitle">Manage your financial flow and categorized records.</p>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <a asp-action="Create"
-               class="btn btn-primary"
-               data-modal="true"
-               data-modal-title="Add Transaction">Add Transaction</a>
-        </div>
+        <a asp-action="Create"
+           class="btn btn-primary vz-trx-add-btn"
+           data-modal="true"
+           data-modal-title="Add Transaction">
+            <span class="vz-trx-add-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 5v14"></path>
+                    <path d="M5 12h14"></path>
+                </svg>
+            </span>
+            <span>Add Transaction</span>
+        </a>
     </header>
 
-    <section class="vz-panel">
-        <form class="vz-transactions-filter" method="get" asp-action="Index">
-            <div class="vz-filter-field">
-                <label for="transactionSearch" class="form-label">Search transactions</label>
+    <section class="vz-trx-toolbar-surface vz-panel">
+        <form class="vz-trx-toolbar" method="get" asp-action="Index">
+            <div class="vz-trx-search-field">
+                <label for="transactionSearch" class="visually-hidden">Search transactions</label>
+                <span class="vz-trx-search-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="M20 20l-3.4-3.4"></path>
+                    </svg>
+                </span>
                 <input id="transactionSearch"
                        name="search"
                        type="search"
                        class="form-control"
                        value="@Model.Search"
-                       placeholder="Search by description, amount, or category" />
+                       placeholder="Search transactions, amounts, or categories..." />
             </div>
 
-            <div class="vz-filter-field">
-                <label for="categoryFilter" class="form-label">Category</label>
-                <select id="categoryFilter" name="category" class="form-select">
-                    <option value="">All Categories</option>
-                    @foreach (var category in Model.CategoryOptions)
-                    {
-                        <option value="@category.Id" selected="@(Model.Category == category.Id)">
-                            @category.Name
-                        </option>
-                    }
-                </select>
-            </div>
-
-            <div class="vz-filter-field">
-                <label for="minAmount" class="form-label">Min Amount</label>
-                <input id="minAmount"
-                       name="minAmount"
-                       type="number"
-                       min="0.01"
-                       step="0.01"
-                       class="form-control"
-                       value="@minAmountValue" />
-            </div>
-
-            <div class="vz-filter-field">
-                <label for="maxAmount" class="form-label">Max Amount</label>
-                <input id="maxAmount"
-                       name="maxAmount"
-                       type="number"
-                       min="0.01"
-                       step="0.01"
-                       class="form-control"
-                       value="@maxAmountValue" />
-            </div>
-
-            <div class="vz-filter-field">
-                <label for="pageSize" class="form-label">Page Size</label>
-                <select id="pageSize" name="pageSize" class="form-select">
-                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
-                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
-                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
-                </select>
-            </div>
-
-            <div class="vz-filter-field">
-                <label for="startDate" class="form-label">Date Range</label>
-                <div class="vz-range-fields">
+            <div class="vz-trx-toolbar-grid">
+                <div class="vz-filter-field">
+                    <label for="startDate" class="form-label">Date From</label>
                     <input id="startDate" name="startDate" type="date" class="form-control" value="@startDateValue" />
+                </div>
+
+                <div class="vz-filter-field">
+                    <label for="endDate" class="form-label">Date To</label>
                     <input id="endDate" name="endDate" type="date" class="form-control" value="@endDateValue" />
+                </div>
+
+                <div class="vz-filter-field">
+                    <label for="categoryFilter" class="form-label">Category</label>
+                    <select id="categoryFilter" name="category" class="form-select">
+                        <option value="">All Categories</option>
+                        @foreach (var category in Model.CategoryOptions)
+                        {
+                            <option value="@category.Id" selected="@(Model.Category == category.Id)">
+                                @category.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="vz-trx-segment-wrap">
+                    <span class="vz-trx-segment-label">Type</span>
+                    <div class="vz-trx-segmented" role="group" aria-label="Transaction type filter">
+                        <button type="button" class="vz-trx-segment is-active" aria-pressed="true">All</button>
+                        <button type="button"
+                                class="vz-trx-segment"
+                                disabled
+                                aria-disabled="true"
+                                title="Income toggle is a visual placeholder. Type filtering is not supported by the current backend query.">
+                            Income
+                        </button>
+                        <button type="button"
+                                class="vz-trx-segment"
+                                disabled
+                                aria-disabled="true"
+                                title="Expense toggle is a visual placeholder. Type filtering is not supported by the current backend query.">
+                            Expenses
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vz-trx-toolbar-grid vz-trx-secondary-grid">
+                <div class="vz-filter-field">
+                    <label for="minAmount" class="form-label">Min Amount</label>
+                    <input id="minAmount"
+                           name="minAmount"
+                           type="number"
+                           min="0.01"
+                           step="0.01"
+                           class="form-control"
+                           value="@minAmountValue" />
+                </div>
+
+                <div class="vz-filter-field">
+                    <label for="maxAmount" class="form-label">Max Amount</label>
+                    <input id="maxAmount"
+                           name="maxAmount"
+                           type="number"
+                           min="0.01"
+                           step="0.01"
+                           class="form-control"
+                           value="@maxAmountValue" />
+                </div>
+
+                <div class="vz-filter-field">
+                    <label for="pageSize" class="form-label">Rows Per Page</label>
+                    <select id="pageSize" name="pageSize" class="form-select">
+                        <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                        <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                        <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                    </select>
+                </div>
+
+                <div class="vz-filter-actions vz-trx-toolbar-actions">
+                    <button type="submit" class="btn btn-primary">Apply</button>
+                    <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
                 </div>
             </div>
 
             <input type="hidden" name="page" value="1" />
-
-            <div class="vz-filter-actions">
-                <button type="submit" class="btn btn-primary">Apply</button>
-                <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
-            </div>
         </form>
     </section>
 
@@ -105,17 +148,17 @@
         </section>
     }
 
-    <section class="vz-panel">
+    <section class="vz-trx-table-card">
         <div class="table-responsive">
-            <table class="table table-sm align-middle vz-table vz-transactions-table">
+            <table class="table align-middle mb-0 vz-trx-table">
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Category</th>
-                        <th>Type</th>
-                        <th>Description</th>
-                        <th>Amount</th>
-                        <th>Actions</th>
+                        <th scope="col">Date</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Category</th>
+                        <th scope="col">Type</th>
+                        <th scope="col" class="text-end">Amount</th>
+                        <th scope="col" class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -124,28 +167,45 @@
                         foreach (var item in transactions)
                         {
                             var descriptionText = string.IsNullOrWhiteSpace(item.Description) ? "-" : item.Description;
-                            <tr>
-                                <td>@item.TransactionDate.ToString("yyyy-MM-dd")</td>
-                                <td>@(item.Category?.Name ?? "Uncategorized")</td>
+                            var categoryName = string.IsNullOrWhiteSpace(item.Category?.Name)
+                                ? "Uncategorized"
+                                : item.Category!.Name;
+                            var isIncome = item.Type == TransactionType.Income;
+                            var categoryIconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(item.Category?.IconKey);
+                            var categoryColorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(item.Category?.ColorKey);
+                            var amountClass = isIncome ? "vz-trx-amount-income" : "vz-trx-amount-expense";
+                            var typeClass = isIncome ? "vz-trx-chip-income" : "vz-trx-chip-expense";
+                            <tr class="vz-trx-row">
+                                <td class="vz-trx-date">@item.TransactionDate.ToString("MMM dd, yyyy")</td>
+                                <td class="vz-trx-description-cell">
+                                    <span class="vz-trx-description" title="@descriptionText">@descriptionText</span>
+                                </td>
                                 <td>
-                                    <span class="badge @(item.Type == TransactionType.Income ? "bg-success" : "bg-danger")">
+                                    <span class="vz-trx-chip vz-trx-chip-category vz-cat-color-@categoryColorKey">
+                                        <partial name="~/Views/Categories/_CategoryIconSvg.cshtml" model="categoryIconKey" />
+                                        @categoryName
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="vz-trx-chip @typeClass">
+                                        <span class="vz-trx-type-dot" aria-hidden="true"></span>
                                         @item.Type
                                     </span>
                                 </td>
-                                <td class="vz-transaction-description-cell">
-                                    <span class="vz-transaction-description"
-                                          title="@descriptionText">@descriptionText</span>
+                                <td class="text-end">
+                                    <span class="vz-trx-amount @amountClass">
+                                        @(isIncome ? "+" : "-")PHP @item.Amount.ToString("N2")
+                                    </span>
                                 </td>
-                                <td>PHP @item.Amount.ToString("N2")</td>
-                                <td>
-                                    <div class="vz-action-icons">
+                                <td class="text-end">
+                                    <div class="vz-action-icons vz-trx-row-actions" aria-label="Transaction actions">
                                         <a asp-action="Details"
                                            asp-route-id="@item.Id"
                                            data-modal="true"
                                            data-modal-title="Transaction Details"
                                            class="vz-action-icon vz-action-view"
                                            title="Details"
-                                           aria-label="Details">
+                                           aria-label="View details">
                                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                 <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
                                                 <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
@@ -157,7 +217,7 @@
                                            data-modal-title="Edit Transaction"
                                            class="vz-action-icon vz-action-edit"
                                            title="Edit"
-                                           aria-label="Edit">
+                                           aria-label="Edit transaction">
                                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                 <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
                                                 <path d="M16 7l3 3"></path>
@@ -169,7 +229,7 @@
                                            data-modal-title="Delete Transaction"
                                            class="vz-action-icon vz-action-delete"
                                            title="Delete"
-                                           aria-label="Delete">
+                                           aria-label="Delete transaction">
                                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                 <path d="M4 7h16"></path>
                                                 <path d="M10 11v6"></path>
@@ -186,7 +246,7 @@
                     else
                     {
                         <tr>
-                            <td colspan="6" class="text-center py-4 text-muted">
+                            <td colspan="6" class="text-center py-5 text-muted">
                                 No transactions found for the selected filters.
                             </td>
                         </tr>
@@ -197,35 +257,16 @@
 
         @if (Model.TotalCount > 0)
         {
-            <nav class="vz-pagination" aria-label="Transactions pages">
-                @if (Model.HasPreviousPage)
-                {
-                    <a asp-action="Index"
-                       asp-route-page="@(Model.Page - 1)"
-                       asp-route-pageSize="@Model.PageSize"
-                       asp-route-search="@Model.Search"
-                       asp-route-category="@Model.Category"
-                       asp-route-startDate="@startDateValue"
-                       asp-route-endDate="@endDateValue"
-                       asp-route-minAmount="@minAmountValue"
-                       asp-route-maxAmount="@maxAmountValue"
-                       class="btn btn-outline-secondary btn-sm">Previous</a>
-                }
-                else
-                {
-                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Previous</button>
-                }
-
-                @for (var pageNumber = firstPage; pageNumber <= lastPage; pageNumber++)
-                {
-                    if (pageNumber == Model.Page)
-                    {
-                        <span class="btn btn-primary btn-sm" aria-current="page">@pageNumber</span>
-                    }
-                    else
+            <footer class="vz-trx-pagination-footer">
+                <p class="vz-trx-pagination-summary">
+                    Showing <strong>@firstRecord</strong> to <strong>@lastRecord</strong> of <strong>@Model.TotalCount</strong> results
+                </p>
+                <div class="vz-trx-pagination-controls">
+                    <span class="vz-trx-pagination-page">Page @Model.Page of @Model.TotalPages</span>
+                    @if (Model.HasPreviousPage)
                     {
                         <a asp-action="Index"
-                           asp-route-page="@pageNumber"
+                           asp-route-page="@(Model.Page - 1)"
                            asp-route-pageSize="@Model.PageSize"
                            asp-route-search="@Model.Search"
                            asp-route-category="@Model.Category"
@@ -233,32 +274,32 @@
                            asp-route-endDate="@endDateValue"
                            asp-route-minAmount="@minAmountValue"
                            asp-route-maxAmount="@maxAmountValue"
-                           class="btn btn-outline-secondary btn-sm">@pageNumber</a>
+                           class="btn btn-outline-secondary btn-sm">Previous</a>
                     }
-                }
+                    else
+                    {
+                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Previous</button>
+                    }
 
-                @if (Model.HasNextPage)
-                {
-                    <a asp-action="Index"
-                       asp-route-page="@(Model.Page + 1)"
-                       asp-route-pageSize="@Model.PageSize"
-                       asp-route-search="@Model.Search"
-                       asp-route-category="@Model.Category"
-                       asp-route-startDate="@startDateValue"
-                       asp-route-endDate="@endDateValue"
-                       asp-route-minAmount="@minAmountValue"
-                       asp-route-maxAmount="@maxAmountValue"
-                       class="btn btn-outline-secondary btn-sm">Next</a>
-                }
-                else
-                {
-                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Next</button>
-                }
-
-                <span class="text-muted small ms-2">
-                    Page @Model.Page of @Model.TotalPages (@Model.TotalCount total)
-                </span>
-            </nav>
+                    @if (Model.HasNextPage)
+                    {
+                        <a asp-action="Index"
+                           asp-route-page="@(Model.Page + 1)"
+                           asp-route-pageSize="@Model.PageSize"
+                           asp-route-search="@Model.Search"
+                           asp-route-category="@Model.Category"
+                           asp-route-startDate="@startDateValue"
+                           asp-route-endDate="@endDateValue"
+                           asp-route-minAmount="@minAmountValue"
+                           asp-route-maxAmount="@maxAmountValue"
+                                   class="btn btn-outline-secondary btn-sm">Next</a>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Next</button>
+                    }
+                </div>
+            </footer>
         }
     </section>
 </section>

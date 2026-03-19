@@ -45,6 +45,16 @@ namespace Vizora.Data
                     .HasConversion<string>()
                     .HasMaxLength(20);
 
+                entity.Property(c => c.IconKey)
+                    .IsRequired()
+                    .HasMaxLength(40)
+                    .HasDefaultValue(CategoryVisualCatalog.DefaultIconKey);
+
+                entity.Property(c => c.ColorKey)
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasDefaultValue(CategoryVisualCatalog.DefaultColorKey);
+
                 entity.Property(c => c.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 

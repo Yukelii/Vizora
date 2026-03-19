@@ -19,6 +19,14 @@ namespace Vizora.Models
         [Required]
         public TransactionType Type { get; set; }
 
+        [Required]
+        [StringLength(40)]
+        public string IconKey { get; set; } = CategoryVisualCatalog.DefaultIconKey;
+
+        [Required]
+        [StringLength(20)]
+        public string ColorKey { get; set; } = CategoryVisualCatalog.DefaultColorKey;
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [Timestamp]

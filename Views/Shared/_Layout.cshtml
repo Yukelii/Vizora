@@ -8,13 +8,18 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/vizora-dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/vizora-auth.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/vizora.styles.css" asp-append-version="true" />
 </head>
-<body class="@(User.Identity?.IsAuthenticated == true ? "vz-auth-layout" : string.Empty)">
-    @{
-        var isAuthenticated = User.Identity?.IsAuthenticated == true;
-        var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
-    }
+@{
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+    var isAuthController = currentController.ToLowerInvariant() == "auth";
+    var bodyClass = isAuthenticated
+        ? "vz-auth-layout"
+        : (isAuthController ? "vz-public-auth-layout" : string.Empty);
+}
+<body class="@bodyClass">
 
     @if (isAuthenticated)
     {
@@ -64,6 +69,12 @@
             </div>
         </div>
     }
+    else if (isAuthController)
+    {
+        <main role="main" class="vz-public-auth-main">
+            @RenderBody()
+        </main>
+    }
     else
     {
         <div class="container">
@@ -89,9 +100,19 @@
         </div>
     </div>
 
-    <footer class="border-top footer text-muted">
+    <footer class="footer text-muted @(isAuthController && !isAuthenticated ? "vz-public-auth-footer" : "border-top")">
         <div class="container">
-            &copy; 2026 - Vizora - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            @if (isAuthController && !isAuthenticated)
+            {
+                <span>&copy; 2026 Vizora. All rights reserved.</span>
+                <span class="vz-auth-footer-separator">&bull;</span>
+                <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy Policy</a>
+            }
+            else
+            {
+                <span>&copy; 2026 - Vizora - </span>
+                <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            }
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

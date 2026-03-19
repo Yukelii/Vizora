@@ -31,9 +31,9 @@ namespace Vizora.Services
 
         Task<bool> IsEmailConfirmedAsync(ApplicationUser user);
 
-        Task SendEmailConfirmationAsync(ApplicationUser user, string confirmationLink);
+        Task<bool> SendEmailConfirmationAsync(ApplicationUser user, string confirmationLink);
 
-        Task SendPasswordResetEmailAsync(ApplicationUser user, string resetLink);
+        Task<bool> SendPasswordResetEmailAsync(ApplicationUser user, string resetLink);
     }
 
     public sealed class RegistrationResult
@@ -151,11 +151,11 @@ namespace Vizora.Services
             return _userManager.IsEmailConfirmedAsync(user);
         }
 
-        public Task SendEmailConfirmationAsync(ApplicationUser user, string confirmationLink)
+        public Task<bool> SendEmailConfirmationAsync(ApplicationUser user, string confirmationLink)
         {
             if (string.IsNullOrWhiteSpace(user.Email))
             {
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
 
             // Email body is intentionally short; link generation happens in controller flow.
@@ -166,11 +166,11 @@ namespace Vizora.Services
             return _accountEmailService.SendEmailAsync(user.Email, subject, htmlBody);
         }
 
-        public Task SendPasswordResetEmailAsync(ApplicationUser user, string resetLink)
+        public Task<bool> SendPasswordResetEmailAsync(ApplicationUser user, string resetLink)
         {
             if (string.IsNullOrWhiteSpace(user.Email))
             {
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
 
             var subject = "Reset your Vizora password";

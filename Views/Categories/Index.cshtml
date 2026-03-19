@@ -1,78 +1,169 @@
-@model IEnumerable<Vizora.Models.Category>
+@model Vizora.Models.CategoriesIndexViewModel
 
 @{
     ViewData["Title"] = "Categories";
+    var categories = Model.Categories?.ToList() ?? new List<Vizora.Models.Category>();
 }
 
-<h1>Categories</h1>
+<section class="vz-content vz-cat-page">
+    <header class="vz-cat-page-header">
+        <div>
+            <h1>Categories</h1>
+            <p class="vz-cat-subtitle">Organize and track your financial flows.</p>
+        </div>
+        <a asp-action="Create"
+           class="btn btn-primary vz-cat-create-btn"
+           data-modal="true"
+           data-modal-title="Create Category">
+            <span class="vz-cat-create-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 5v14"></path>
+                    <path d="M5 12h14"></path>
+                </svg>
+            </span>
+            <span>Create Category</span>
+        </a>
+    </header>
 
-<p>
-    <a asp-action="Create"
-       class="btn btn-primary"
-       data-modal="true"
-       data-modal-title="Create Category">Create Category</a>
-</p>
+    <section class="vz-cat-toolbar">
+        <div class="vz-cat-tabs" role="tablist" aria-label="Category type tabs">
+            <a asp-action="Index"
+               asp-route-filter="@CategoryListFilter.All"
+               class="vz-cat-tab @(Model.Filter == CategoryListFilter.All ? "is-active" : string.Empty)"
+               role="tab"
+               aria-selected="@(Model.Filter == CategoryListFilter.All)"
+               aria-current="@(Model.Filter == CategoryListFilter.All ? "page" : null)">
+                All
+                <span>@Model.TotalCategories</span>
+            </a>
+            <a asp-action="Index"
+               asp-route-filter="@CategoryListFilter.Expense"
+               class="vz-cat-tab @(Model.Filter == CategoryListFilter.Expense ? "is-active" : string.Empty)"
+               role="tab"
+               aria-selected="@(Model.Filter == CategoryListFilter.Expense)"
+               aria-current="@(Model.Filter == CategoryListFilter.Expense ? "page" : null)">
+                Expenses
+                <span>@Model.ExpenseCategories</span>
+            </a>
+            <a asp-action="Index"
+               asp-route-filter="@CategoryListFilter.Income"
+               class="vz-cat-tab @(Model.Filter == CategoryListFilter.Income ? "is-active" : string.Empty)"
+               role="tab"
+               aria-selected="@(Model.Filter == CategoryListFilter.Income)"
+               aria-current="@(Model.Filter == CategoryListFilter.Income ? "page" : null)">
+                Income
+                <span>@Model.IncomeCategories</span>
+            </a>
+        </div>
 
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Created</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-@foreach (var item in Model)
-{
-        <tr>
-            <td>@item.Name</td>
-            <td>@item.Type</td>
-            <td>@item.CreatedAt.ToString("yyyy-MM-dd")</td>
-            <td>
-                <div class="vz-action-icons">
-                    <a asp-action="Details"
-                       asp-route-id="@item.Id"
-                       data-modal="true"
-                       data-modal-title="Category Details"
-                       class="vz-action-icon vz-action-view"
-                       title="Details"
-                       aria-label="Details">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
-                            <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
-                        </svg>
-                    </a>
-                    <a asp-action="Edit"
-                       asp-route-id="@item.Id"
-                       data-modal="true"
-                       data-modal-title="Edit Category"
-                       class="vz-action-icon vz-action-edit"
-                       title="Edit"
-                       aria-label="Edit">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
-                            <path d="M16 7l3 3"></path>
-                        </svg>
-                    </a>
-                    <a asp-action="Delete"
-                       asp-route-id="@item.Id"
-                       data-modal="true"
-                       data-modal-title="Delete Category"
-                       class="vz-action-icon vz-action-delete"
-                       title="Delete"
-                       aria-label="Delete">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M4 7h16"></path>
-                            <path d="M10 11v6"></path>
-                            <path d="M14 11v6"></path>
-                            <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"></path>
-                            <path d="M9 7l1 -3h4l1 3"></path>
-                        </svg>
-                    </a>
-                </div>
-            </td>
-        </tr>
-}
-    </tbody>
-</table>
+        <div class="vz-cat-total-pill">
+            <span>Total Categories</span>
+            <strong>@Model.TotalCategories</strong>
+        </div>
+    </section>
+
+    @if (categories.Any())
+    {
+        <section class="vz-cat-table-card">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0 vz-cat-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Category</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Created</th>
+                            <th scope="col" class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in categories)
+                        {
+                            var iconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(item.IconKey);
+                            var colorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(item.ColorKey);
+                            var typeClass = item.Type == TransactionType.Income
+                                ? "vz-cat-badge-income"
+                                : "vz-cat-badge-expense";
+                            <tr class="vz-cat-row">
+                                <td>
+                                    <div class="vz-cat-name-cell">
+                                        <span class="vz-cat-icon-tile vz-cat-color-@colorKey" aria-hidden="true">
+                                            <partial name="_CategoryIconSvg" model="iconKey" />
+                                        </span>
+
+                                        <div>
+                                            <span class="vz-cat-name">@item.Name</span>
+                                            <span class="vz-cat-meta">
+                                                @CategoryVisualCatalog.GetIconLabel(iconKey) &middot; @CategoryVisualCatalog.GetColorLabel(colorKey)
+                                            </span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="vz-cat-badge @typeClass">@item.Type</span>
+                                </td>
+                                <td class="vz-cat-created">@item.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                <td class="text-end">
+                                    <div class="vz-action-icons vz-cat-actions">
+                                        <a asp-action="Details"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Category Details"
+                                           class="vz-action-icon vz-action-view"
+                                           title="Details"
+                                           aria-label="View category details">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                                                <path d="M22 12c-2 3.5 -5 5 -10 5s-8 -1.5 -10 -5c2 -3.5 5 -5 10 -5s8 1.5 10 5"></path>
+                                            </svg>
+                                        </a>
+                                        <a asp-action="Edit"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Edit Category"
+                                           class="vz-action-icon vz-action-edit"
+                                           title="Edit"
+                                           aria-label="Edit category">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M7 20h4l10 -10a2.828 2.828 0 0 0 -4 -4l-10 10v4"></path>
+                                                <path d="M16 7l3 3"></path>
+                                            </svg>
+                                        </a>
+                                        <a asp-action="Delete"
+                                           asp-route-id="@item.Id"
+                                           data-modal="true"
+                                           data-modal-title="Delete Category"
+                                           class="vz-action-icon vz-action-delete"
+                                           title="Delete"
+                                           aria-label="Delete category">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M4 7h16"></path>
+                                                <path d="M10 11v6"></path>
+                                                <path d="M14 11v6"></path>
+                                                <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"></path>
+                                                <path d="M9 7l1 -3h4l1 3"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="vz-cat-empty-state">
+            <div class="vz-cat-empty-icon" aria-hidden="true">
+                <partial name="_CategoryIconSvg" model="CategoryVisualCatalog.DefaultIconKey" />
+            </div>
+            <h2>No categories found</h2>
+            <p>Create your first category to organize income and expenses.</p>
+            <a asp-action="Create"
+               class="btn btn-primary"
+               data-modal="true"
+               data-modal-title="Create Category">Create First Category</a>
+        </section>
+    }
+</section>

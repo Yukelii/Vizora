@@ -5,45 +5,59 @@
     var categoryTypeMapJson = JsonSerializer.Serialize(ViewData["CategoryTypeMap"] ?? new Dictionary<int, string>());
 }
 
-<form asp-action="Edit" method="post" data-modal-form="edit-transaction">
-    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+<form asp-action="Edit" method="post" data-modal-form="edit-transaction" class="vz-trx-modal-form">
+    <div asp-validation-summary="ModelOnly" class="text-danger vz-trx-modal-validation"></div>
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="RowVersion" />
 
-    <div class="mb-3">
-        <label asp-for="TransactionDate" class="form-label"></label>
-        <input asp-for="TransactionDate" class="form-control" type="date" />
-        <span asp-validation-for="TransactionDate" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="CategoryId" class="form-label"></label>
-        <select asp-for="CategoryId" class="form-select" asp-items="ViewBag.CategoryId">
-            <option value="">-- Select Category --</option>
-        </select>
-        <span asp-validation-for="CategoryId" class="text-danger"></span>
-        <div id="derivedTypeContainer" class="mt-2 d-none">
-            <span class="me-2">Type:</span>
-            <span id="derivedTypeBadge" class="badge"></span>
+    <div class="vz-trx-modal-field">
+        <span id="transactionTypeLabel" class="vz-trx-modal-label">Transaction Type</span>
+        <p id="transactionTypeHelp" class="vz-trx-modal-help">Type is derived from the selected category.</p>
+        <div class="vz-trx-modal-type-toggle" role="group" aria-labelledby="transactionTypeLabel" aria-describedby="transactionTypeHelp">
+            <span class="vz-trx-modal-type-option" data-vz-role="type-chip-income" aria-pressed="false">Income</span>
+            <span class="vz-trx-modal-type-option" data-vz-role="type-chip-expense" aria-pressed="false">Expense</span>
+        </div>
+        <div id="derivedTypeContainer" data-vz-persist="true" class="vz-trx-modal-derived">
+            <span class="vz-trx-modal-derived-label">Current Type</span>
+            <span id="derivedTypeBadge" class="badge text-bg-secondary">Select category</span>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Amount" class="form-label"></label>
-        <input asp-for="Amount" class="form-control" step="0.01" />
-        <span asp-validation-for="Amount" class="text-danger"></span>
+    <div class="vz-trx-modal-grid">
+        <div class="vz-trx-modal-field">
+            <label asp-for="TransactionDate" class="form-label vz-trx-modal-label"></label>
+            <input asp-for="TransactionDate" class="form-control" type="date" />
+            <span asp-validation-for="TransactionDate" class="text-danger"></span>
+        </div>
+
+        <div class="vz-trx-modal-field">
+            <label asp-for="Amount" class="form-label vz-trx-modal-label"></label>
+            <div class="vz-trx-modal-amount-wrap">
+                <span class="vz-trx-modal-amount-prefix" aria-hidden="true">PHP</span>
+                <input asp-for="Amount" class="form-control vz-trx-modal-amount-input" step="0.01" />
+            </div>
+            <span asp-validation-for="Amount" class="text-danger"></span>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label"></label>
-        <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+    <div class="vz-trx-modal-field">
+        <label asp-for="Description" class="form-label vz-trx-modal-label"></label>
+        <input asp-for="Description" class="form-control" placeholder="What was this for?" />
         <span asp-validation-for="Description" class="text-danger"></span>
+    </div>
+
+    <div class="vz-trx-modal-field">
+        <label asp-for="CategoryId" class="form-label vz-trx-modal-label"></label>
+        <select asp-for="CategoryId" class="form-select" asp-items="ViewBag.CategoryId">
+            <option value="">Select category</option>
+        </select>
+        <span asp-validation-for="CategoryId" class="text-danger"></span>
     </div>
 
     <input type="hidden" id="CategoryTypeMapJson" value='@categoryTypeMapJson' />
 
-    <div class="d-flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-primary">Save</button>
+    <div class="d-flex flex-wrap gap-2 justify-content-end vz-trx-modal-actions">
         <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Transaction</button>
     </div>
 </form>
