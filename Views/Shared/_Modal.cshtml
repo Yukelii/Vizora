@@ -1,0 +1,38 @@
+@model IDictionary<string, object?>
+
+@{
+    var bodyPartial = string.Empty;
+    object? bodyModel = null;
+    var size = "md";
+    var variant = "form";
+
+    if (Model.TryGetValue("BodyPartial", out var bodyPartialValue))
+    {
+        bodyPartial = bodyPartialValue?.ToString() ?? string.Empty;
+    }
+
+    if (Model.TryGetValue("BodyModel", out var bodyModelValue))
+    {
+        bodyModel = bodyModelValue;
+    }
+
+    if (Model.TryGetValue("Size", out var sizeValue))
+    {
+        size = (sizeValue?.ToString() ?? "md").Trim().ToLowerInvariant();
+    }
+
+    if (Model.TryGetValue("Variant", out var variantValue))
+    {
+        variant = (variantValue?.ToString() ?? "form").Trim().ToLowerInvariant();
+    }
+
+    var normalizedSize = size is "sm" or "md" or "lg" ? size : "md";
+    var normalizedVariant = string.IsNullOrWhiteSpace(variant) ? "form" : variant;
+}
+
+<div class="vz-modal-shell vz-modal-variant-@normalizedVariant" data-vz-modal-size="@normalizedSize">
+    @if (!string.IsNullOrWhiteSpace(bodyPartial))
+    {
+        @await Html.PartialAsync(bodyPartial, bodyModel)
+    }
+</div>

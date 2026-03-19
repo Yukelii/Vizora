@@ -5,35 +5,41 @@
     var colorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(Model.ColorKey);
 }
 
-<div>
-    <div class="vz-cat-name-cell mb-3">
+<div class="vz-modal-details">
+    <div class="vz-modal-details-head">
         <span class="vz-cat-icon-tile vz-cat-color-@colorKey" aria-hidden="true">
             <partial name="_CategoryIconSvg" model="iconKey" />
         </span>
-        <div>
-            <span class="vz-cat-name">@Model.Name</span>
-            <span class="vz-cat-meta">@CategoryVisualCatalog.GetIconLabel(iconKey) &middot; @CategoryVisualCatalog.GetColorLabel(colorKey)</span>
+        <div class="vz-modal-details-title-wrap">
+            <p class="vz-modal-details-title">@Model.Name</p>
+            <p class="vz-modal-details-subtitle">@CategoryVisualCatalog.GetIconLabel(iconKey)</p>
+        </div>
+        <span class="vz-cat-badge @(Model.Type == TransactionType.Income ? "vz-cat-badge-income" : "vz-cat-badge-expense")">@Model.Type</span>
+    </div>
+
+    <div class="vz-modal-details-grid" role="group" aria-label="Category details">
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Color</span>
+            <span class="vz-modal-details-value">
+                <span class="vz-cat-detail-dot vz-cat-color-@colorKey" aria-hidden="true"></span>
+                @CategoryVisualCatalog.GetColorLabel(colorKey)
+            </span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Icon</span>
+            <span class="vz-modal-details-value">@CategoryVisualCatalog.GetIconLabel(iconKey)</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Created</span>
+            <span class="vz-modal-details-value">@Model.CreatedAt.ToString("yyyy-MM-dd")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Type</span>
+            <span class="vz-modal-details-value">@Model.Type</span>
         </div>
     </div>
 
-    <dl class="row mb-4">
-        <dt class="col-sm-4">Name</dt>
-        <dd class="col-sm-8">@Model.Name</dd>
-
-        <dt class="col-sm-4">Type</dt>
-        <dd class="col-sm-8">@Model.Type</dd>
-
-        <dt class="col-sm-4">Icon</dt>
-        <dd class="col-sm-8">@CategoryVisualCatalog.GetIconLabel(iconKey)</dd>
-
-        <dt class="col-sm-4">Color</dt>
-        <dd class="col-sm-8">@CategoryVisualCatalog.GetColorLabel(colorKey)</dd>
-
-        <dt class="col-sm-4">Created At</dt>
-        <dd class="col-sm-8">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
-    </dl>
-
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 vz-modal-details-actions">
         <a asp-action="Edit"
            asp-route-id="@Model.Id"
            class="btn btn-primary"

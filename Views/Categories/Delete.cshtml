@@ -15,7 +15,15 @@
 
 @if (isModalRequest)
 {
-    <partial name="_DeleteConfirm" model="Model" />
+    @await Html.PartialAsync(
+        "~/Views/Shared/_Modal.cshtml",
+        new Dictionary<string, object?>
+        {
+            ["Size"] = "sm",
+            ["Variant"] = "delete",
+            ["BodyPartial"] = "~/Views/Categories/_DeleteConfirm.cshtml",
+            ["BodyModel"] = Model
+        })
 }
 else
 {

@@ -12,13 +12,104 @@
 
     const api = {
         initializeTransactionCreateForm,
-        initializeBudgetCreateForm
+        initializeBudgetCreateForm,
+        initializeCategoryIconPicker
     };
 
     window.VizoraModalForms = api;
 
+    const CATEGORY_ICON_LIBRARY = [
+        { key: "shopping-cart", canonical: "shopping_cart" },
+        { key: "coffee", canonical: "restaurant" },
+        { key: "home", canonical: "home" },
+        { key: "car", canonical: "directions_car" },
+        { key: "wallet", canonical: "payments" },
+        { key: "credit-card", canonical: "payments" },
+        { key: "gift", canonical: "shopping_cart" },
+        { key: "movie", canonical: "movie" },
+        { key: "school", canonical: "school" },
+        { key: "plane", canonical: "flight" },
+        { key: "tools", canonical: "work" },
+        { key: "device-mobile", canonical: "payments" },
+        { key: "heart", canonical: "favorite" },
+        { key: "basket", canonical: "shopping_cart" },
+        { key: "receipt", canonical: "receipt_long" },
+        { key: "chart-bar", canonical: "savings" },
+        { key: "building", canonical: "home" },
+        { key: "truck", canonical: "directions_car" },
+        { key: "map-pin", canonical: "directions_car" },
+        { key: "book", canonical: "school" },
+        { key: "music", canonical: "movie" },
+        { key: "camera", canonical: "movie" },
+        { key: "pizza", canonical: "restaurant" },
+        { key: "bike", canonical: "directions_car" },
+        { key: "cash", canonical: "payments" },
+        { key: "coin", canonical: "payments" },
+        { key: "medical-cross", canonical: "local_hospital" },
+        { key: "pill", canonical: "local_hospital" },
+        { key: "shield", canonical: "savings" },
+        { key: "lock", canonical: "savings" },
+        { key: "user", canonical: "favorite" },
+        { key: "briefcase", canonical: "work" },
+        { key: "building-bank", canonical: "savings" },
+        { key: "currency-dollar", canonical: "payments" },
+        { key: "chart-pie", canonical: "savings" },
+        { key: "calculator", canonical: "savings" },
+        { key: "file-invoice", canonical: "receipt_long" },
+        { key: "shopping-bag", canonical: "shopping_cart" },
+        { key: "tag", canonical: "shopping_cart" },
+        { key: "box", canonical: "shopping_cart" },
+        { key: "archive", canonical: "receipt_long" },
+        { key: "train", canonical: "directions_car" },
+        { key: "bus", canonical: "directions_car" },
+        { key: "gas-station", canonical: "directions_car" },
+        { key: "lamp", canonical: "home" },
+        { key: "book-2", canonical: "school" },
+        { key: "beach", canonical: "flight" },
+        { key: "dog", canonical: "pets" },
+        { key: "cat", canonical: "pets" },
+        { key: "salad", canonical: "restaurant" },
+        { key: "apple", canonical: "restaurant" },
+        { key: "chef-hat", canonical: "restaurant" },
+        { key: "swimming", canonical: "fitness_center" },
+        { key: "barbell", canonical: "fitness_center" },
+        { key: "guitar-pick", canonical: "movie" },
+        { key: "headphones", canonical: "movie" },
+        { key: "video", canonical: "movie" },
+        { key: "paint", canonical: "movie" },
+        { key: "stethoscope", canonical: "local_hospital" },
+        { key: "ambulance", canonical: "local_hospital" },
+        { key: "baby-carriage", canonical: "home" },
+        { key: "sun", canonical: "favorite" },
+        { key: "moon", canonical: "favorite" },
+        { key: "battery", canonical: "payments" },
+        { key: "wifi", canonical: "work" },
+        { key: "globe", canonical: "flight" },
+        { key: "camera-plus", canonical: "movie" },
+        { key: "notebook", canonical: "work" },
+        { key: "language", canonical: "school" },
+        { key: "trophy", canonical: "fitness_center" },
+        { key: "device-gamepad-2", canonical: "sports_esports" }
+    ];
+
+    const QUICK_ICON_COUNT = 17;
+    const DEFAULT_CANONICAL_ICON = "receipt_long";
+    const canonicalToAliasMap = new Map();
+    const aliasToCanonicalMap = new Map();
+
+    CATEGORY_ICON_LIBRARY.forEach((icon) => {
+        if (!canonicalToAliasMap.has(icon.canonical)) {
+            canonicalToAliasMap.set(icon.canonical, icon.key);
+        }
+
+        if (!aliasToCanonicalMap.has(icon.key)) {
+            aliasToCanonicalMap.set(icon.key, icon.canonical);
+        }
+    });
+
     initializeTransactionCreateForm(document);
     initializeBudgetCreateForm(document);
+    initializeCategoryIconPicker(document);
 
     if (!modalElement || !modalBody || !window.bootstrap || !window.bootstrap.Modal) {
         return;
@@ -39,6 +130,8 @@
         cancelSubmitRequest();
         modalBody.innerHTML = "";
         modalElement.removeAttribute("aria-busy");
+        modalElement.classList.remove("vz-modal-size-sm", "vz-modal-size-md", "vz-modal-size-lg", "vz-modal-category");
+        modalElement.classList.add("vz-modal-size-md");
 
         if (lastTrigger && typeof lastTrigger.focus === "function") {
             lastTrigger.focus();
@@ -184,7 +277,25 @@
     async function initializeModalContent(container) {
         initializeTransactionCreateForm(container);
         initializeBudgetCreateForm(container);
+        initializeCategoryIconPicker(container);
+        synchronizeModalLayoutContext(container);
         await initializeClientValidation(container);
+    }
+
+    function synchronizeModalLayoutContext(container) {
+        if (!(modalElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const sizeHost = container.querySelector("[data-vz-modal-size]");
+        const requestedSize = (sizeHost?.getAttribute("data-vz-modal-size") || "md").trim().toLowerCase();
+        const normalizedSize =
+            requestedSize === "sm" || requestedSize === "md" || requestedSize === "lg"
+                ? requestedSize
+                : "md";
+
+        modalElement.classList.remove("vz-modal-size-sm", "vz-modal-size-md", "vz-modal-size-lg");
+        modalElement.classList.add(`vz-modal-size-${normalizedSize}`);
     }
 
     async function initializeClientValidation(container) {
@@ -381,6 +492,246 @@
         startDateInput.addEventListener("change", applyPeriodDefaults);
         applyPeriodDefaults();
         form.dataset.vzBudgetInit = "1";
+    }
+
+    function initializeCategoryIconPicker(root) {
+        const forms = root.querySelectorAll(
+            "form[data-modal-form='create-category'], form[data-modal-form='edit-category'], form[action$='/Categories/Create'], form[action$='/Categories/Edit']"
+        );
+
+        forms.forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.vzCategoryIconInit === "1") {
+                return;
+            }
+
+            const iconInput = form.querySelector("input[data-vz-icon-value]");
+            const selectedLabel = form.querySelector("[data-vz-selected-icon-label]");
+            const iconGrid = form.querySelector("[data-vz-icon-grid]");
+            const iconLibraryGrid = form.querySelector("[data-vz-icon-library-grid]");
+            const libraryModal = form.querySelector("[data-vz-icon-library-modal]");
+            const searchInput = form.querySelector("[data-vz-icon-search]");
+            const searchEmpty = form.querySelector("[data-vz-icon-search-empty]");
+
+            if (!(iconGrid instanceof HTMLElement) ||
+                !(iconLibraryGrid instanceof HTMLElement) ||
+                !(iconInput instanceof HTMLInputElement)) {
+                return;
+            }
+
+            iconGrid.innerHTML = "";
+            iconLibraryGrid.innerHTML = "";
+
+            const quickIcons = CATEGORY_ICON_LIBRARY.slice(0, QUICK_ICON_COUNT);
+            const quickIconKeys = new Set(quickIcons.map((icon) => icon.key));
+
+            quickIcons.forEach((icon) => {
+                iconGrid.appendChild(createIconButton(icon, false));
+            });
+
+            const openLibraryButton = document.createElement("button");
+            openLibraryButton.type = "button";
+            openLibraryButton.className = "vz-cat-icon-option vz-cat-icon-library-trigger";
+            openLibraryButton.dataset.vzOpenIconLibrary = "true";
+            openLibraryButton.setAttribute("aria-label", "Open icon library");
+            openLibraryButton.setAttribute("title", "Open icon library");
+            openLibraryButton.textContent = "+";
+            iconGrid.appendChild(openLibraryButton);
+
+            CATEGORY_ICON_LIBRARY.forEach((icon) => {
+                iconLibraryGrid.appendChild(createIconButton(icon, true));
+            });
+
+            const iconButtons = Array.from(form.querySelectorAll("[data-vz-icon-button]"));
+            const libraryButtons = Array.from(form.querySelectorAll("[data-vz-icon-library-button]"));
+            const startingCanonical = normalizeCanonicalIcon(iconInput.value);
+            let selectedAlias =
+                canonicalToAliasMap.get(startingCanonical) ||
+                canonicalToAliasMap.get(DEFAULT_CANONICAL_ICON) ||
+                CATEGORY_ICON_LIBRARY[0].key;
+            let returnFocusTarget = null;
+
+            const updateSelectionState = () => {
+                const selectedCanonical = aliasToCanonicalMap.get(selectedAlias) || DEFAULT_CANONICAL_ICON;
+                iconInput.value = selectedCanonical;
+
+                iconButtons.forEach((button) => {
+                    if (!(button instanceof HTMLButtonElement)) {
+                        return;
+                    }
+
+                    const isSelected = (button.getAttribute("data-vz-icon-key") || "") === selectedAlias;
+                    button.classList.toggle("is-selected", isSelected);
+                    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+                });
+
+                if (selectedLabel instanceof HTMLElement) {
+                    selectedLabel.textContent = formatIconLabel(selectedAlias);
+                }
+
+                openLibraryButton.classList.toggle("is-selected", !quickIconKeys.has(selectedAlias));
+                openLibraryButton.setAttribute("aria-pressed", !quickIconKeys.has(selectedAlias) ? "true" : "false");
+            };
+
+            const closeLibrary = () => {
+                if (!(libraryModal instanceof HTMLElement)) {
+                    return;
+                }
+
+                libraryModal.hidden = true;
+
+                if (searchInput instanceof HTMLInputElement) {
+                    searchInput.value = "";
+                    filterLibraryIcons();
+                }
+
+                if (returnFocusTarget instanceof HTMLElement && typeof returnFocusTarget.focus === "function") {
+                    returnFocusTarget.focus();
+                }
+
+                returnFocusTarget = null;
+            };
+
+            const openLibrary = () => {
+                if (!(libraryModal instanceof HTMLElement)) {
+                    return;
+                }
+
+                returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                libraryModal.hidden = false;
+
+                if (searchInput instanceof HTMLInputElement) {
+                    searchInput.value = "";
+                    filterLibraryIcons();
+                    setTimeout(() => searchInput.focus(), 0);
+                } else {
+                    const selectedButton = libraryButtons.find((button) =>
+                        (button.getAttribute("data-vz-icon-key") || "") === selectedAlias
+                    );
+
+                    if (selectedButton instanceof HTMLElement) {
+                        setTimeout(() => selectedButton.focus(), 0);
+                    }
+                }
+            };
+
+            const filterLibraryIcons = () => {
+                if (!(searchInput instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                const query = searchInput.value.trim().toLowerCase();
+                let visibleCount = 0;
+
+                libraryButtons.forEach((button) => {
+                    const key = (button.getAttribute("data-vz-icon-key") || "").toLowerCase();
+                    const label = (button.getAttribute("data-vz-icon-label") || "").toLowerCase();
+                    const isVisible = !query || key.includes(query) || label.includes(query);
+
+                    button.classList.toggle("d-none", !isVisible);
+
+                    if (isVisible) {
+                        visibleCount += 1;
+                    }
+                });
+
+                if (searchEmpty instanceof HTMLElement) {
+                    searchEmpty.classList.toggle("d-none", visibleCount !== 0);
+                }
+            };
+
+            const pickIcon = (button) => {
+                const iconAlias = button.getAttribute("data-vz-icon-key");
+                if (!iconAlias) {
+                    return;
+                }
+
+                selectedAlias = iconAlias;
+                updateSelectionState();
+
+                if (button.hasAttribute("data-vz-icon-library-button")) {
+                    closeLibrary();
+                }
+            };
+
+            iconButtons.forEach((button) => {
+                if (!(button instanceof HTMLButtonElement)) {
+                    return;
+                }
+
+                button.addEventListener("click", () => pickIcon(button));
+            });
+
+            openLibraryButton.addEventListener("click", openLibrary);
+
+            form.querySelectorAll("[data-vz-icon-library-close]").forEach((button) => {
+                if (!(button instanceof HTMLElement)) {
+                    return;
+                }
+
+                button.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    closeLibrary();
+                });
+            });
+
+            if (searchInput instanceof HTMLInputElement) {
+                searchInput.addEventListener("input", filterLibraryIcons);
+            }
+
+            if (libraryModal instanceof HTMLElement) {
+                libraryModal.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        closeLibrary();
+                    }
+                });
+            }
+
+            updateSelectionState();
+            form.dataset.vzCategoryIconInit = "1";
+        });
+    }
+
+    function createIconButton(icon, isLibraryButton) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = isLibraryButton
+            ? "vz-cat-icon-option vz-cat-icon-library-option"
+            : "vz-cat-icon-option";
+        button.dataset.vzIconButton = "true";
+        button.dataset.vzIconKey = icon.key;
+        button.dataset.vzIconLabel = formatIconLabel(icon.key);
+
+        if (isLibraryButton) {
+            button.dataset.vzIconLibraryButton = "true";
+        }
+
+        const iconElement = document.createElement("i");
+        iconElement.className = `ti ti-${icon.key}`;
+        iconElement.setAttribute("aria-hidden", "true");
+        button.appendChild(iconElement);
+
+        const iconLabel = formatIconLabel(icon.key);
+        button.setAttribute("aria-label", iconLabel);
+        button.setAttribute("title", iconLabel);
+
+        return button;
+    }
+
+    function formatIconLabel(iconKey) {
+        const words = iconKey.split(/[-_]/).filter(Boolean);
+        return words
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ");
+    }
+
+    function normalizeCanonicalIcon(iconValue) {
+        const normalized = (iconValue || "").trim().toLowerCase();
+        if (!normalized) {
+            return DEFAULT_CANONICAL_ICON;
+        }
+
+        return normalized;
     }
 
     function focusFirstInput(container) {

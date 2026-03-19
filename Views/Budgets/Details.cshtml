@@ -15,7 +15,15 @@
 
 @if (isModalRequest)
 {
-    <partial name="_DetailsModal" model="Model" />
+    @await Html.PartialAsync(
+        "~/Views/Shared/_Modal.cshtml",
+        new Dictionary<string, object?>
+        {
+            ["Size"] = "md",
+            ["Variant"] = "details",
+            ["BodyPartial"] = "~/Views/Budgets/_DetailsModal.cshtml",
+            ["BodyModel"] = Model
+        })
 }
 else
 {

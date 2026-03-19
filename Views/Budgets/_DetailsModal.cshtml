@@ -1,35 +1,51 @@
 @model Vizora.Models.BudgetPerformanceViewModel
 
-<div>
-    <dl class="row mb-4">
-        <dt class="col-sm-4">Category</dt>
-        <dd class="col-sm-8">@Model.CategoryName</dd>
+@{
+    var remainingClass = Model.RemainingAmount >= 0 ? "is-positive" : "is-negative";
+    var statusClass = Model.IsOverBudget ? "text-bg-danger" : "text-bg-success";
+    var statusText = Model.IsOverBudget ? "Over Budget" : "Within Budget";
+}
 
-        <dt class="col-sm-4">Period Type</dt>
-        <dd class="col-sm-8">@Model.PeriodType</dd>
+<div class="vz-modal-details">
+    <div class="vz-modal-details-head">
+        <span class="vz-modal-details-icon" aria-hidden="true">B</span>
+        <div class="vz-modal-details-title-wrap">
+            <p class="vz-modal-details-title">@Model.CategoryName</p>
+            <p class="vz-modal-details-subtitle">
+                @Model.StartDate.ToString("yyyy-MM-dd") - @Model.EndDate.ToString("yyyy-MM-dd")
+            </p>
+        </div>
+        <span class="badge @statusClass">@statusText</span>
+    </div>
 
-        <dt class="col-sm-4">Start Date</dt>
-        <dd class="col-sm-8">@Model.StartDate.ToString("yyyy-MM-dd")</dd>
+    <div class="vz-modal-details-grid" role="group" aria-label="Budget details">
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Type</span>
+            <span class="vz-modal-details-value">@Model.PeriodType</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Planned</span>
+            <span class="vz-modal-details-value">PHP @Model.PlannedAmount.ToString("N2")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Actual</span>
+            <span class="vz-modal-details-value">PHP @Model.ActualSpending.ToString("N2")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Remaining</span>
+            <span class="vz-modal-details-value @remainingClass">PHP @Model.RemainingAmount.ToString("N2")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Usage</span>
+            <span class="vz-modal-details-value">@Model.UsagePercent.ToString("N2")%</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Status</span>
+            <span class="vz-modal-details-value">@statusText</span>
+        </div>
+    </div>
 
-        <dt class="col-sm-4">End Date</dt>
-        <dd class="col-sm-8">@Model.EndDate.ToString("yyyy-MM-dd")</dd>
-
-        <dt class="col-sm-4">Planned Amount</dt>
-        <dd class="col-sm-8">PHP @Model.PlannedAmount.ToString("N2")</dd>
-
-        <dt class="col-sm-4">Actual Spending</dt>
-        <dd class="col-sm-8">PHP @Model.ActualSpending.ToString("N2")</dd>
-
-        <dt class="col-sm-4">Remaining</dt>
-        <dd class="col-sm-8 @(Model.RemainingAmount >= 0 ? "text-success" : "text-danger")">
-            PHP @Model.RemainingAmount.ToString("N2")
-        </dd>
-
-        <dt class="col-sm-4">Usage</dt>
-        <dd class="col-sm-8">@Model.UsagePercent.ToString("N2")%</dd>
-    </dl>
-
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 vz-modal-details-actions">
         <a asp-action="Edit"
            asp-route-id="@Model.BudgetId"
            class="btn btn-primary"

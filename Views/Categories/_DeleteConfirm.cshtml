@@ -1,24 +1,26 @@
 @model Vizora.Models.Category
 
-<h3 class="h5">Are you sure you want to delete this category?</h3>
+<div class="vz-modal-delete">
+    <p class="vz-modal-delete-lead">Are you sure you want to delete this category?</p>
 
-@if (!ViewData.ModelState.IsValid)
-{
-    <div asp-validation-summary="All" class="text-danger"></div>
-}
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div asp-validation-summary="All" class="text-danger"></div>
+    }
 
-<dl class="row mb-4">
-    <dt class="col-sm-4">Name</dt>
-    <dd class="col-sm-8">@Model.Name</dd>
-
-    <dt class="col-sm-4">Type</dt>
-    <dd class="col-sm-8">@Model.Type</dd>
-</dl>
-
-<form asp-action="Delete" method="post">
-    <input type="hidden" asp-for="Id" />
-    <div class="d-flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-danger">Delete</button>
-        <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+    <div class="vz-modal-delete-summary" role="group" aria-label="Category summary">
+        <div class="vz-modal-delete-meta">
+            <p class="vz-modal-delete-label">Category Name</p>
+            <p class="vz-modal-delete-value">@Model.Name</p>
+        </div>
+        <span class="vz-cat-badge @(Model.Type == TransactionType.Income ? "vz-cat-badge-income" : "vz-cat-badge-expense")">@Model.Type</span>
     </div>
-</form>
+
+    <form asp-action="Delete" method="post">
+        <input type="hidden" asp-for="Id" />
+        <div class="d-flex flex-wrap gap-2 justify-content-end vz-modal-delete-actions">
+            <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </div>
+    </form>
+</div>

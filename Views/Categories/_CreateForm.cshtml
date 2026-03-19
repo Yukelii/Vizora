@@ -3,7 +3,9 @@
     var isExpenseSelected = Model.Type == TransactionType.Expense;
     var isIncomeSelected = !isExpenseSelected;
     var selectedIconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(Model.IconKey);
-    var shouldExpandIconList = CategoryVisualCatalog.MoreIconKeys.Contains(selectedIconKey, StringComparer.OrdinalIgnoreCase);
+    var iconLibraryModalId = "create_icon_library_modal";
+    var iconLibraryTitleId = "create_icon_library_title";
+    var iconSearchId = "create_icon_library_search";
 }
 
 <form asp-action="Create" method="post" data-modal-form="create-category" class="vz-cat-modal-form">
@@ -38,45 +40,47 @@
         <span asp-validation-for="Type" class="text-danger"></span>
     </div>
 
-    <div class="vz-cat-modal-field">
+    <div class="vz-cat-modal-field vz-cat-icon-section">
         <label asp-for="IconKey" class="form-label">Icon</label>
-        <div class="vz-cat-icon-picker" role="radiogroup" aria-label="Category icon selection">
-            @foreach (var iconKey in CategoryVisualCatalog.SuggestedIconKeys)
-            {
-                var optionId = $"create_icon_{iconKey}";
-                <label class="vz-cat-choice-tile" for="@optionId">
-                    <input id="@optionId"
-                           class="vz-cat-choice-input"
-                           type="radio"
-                           asp-for="IconKey"
-                           value="@iconKey"
-                           aria-label="@CategoryVisualCatalog.GetIconLabel(iconKey)" />
-                    <span class="vz-cat-icon-option" aria-hidden="true" title="@CategoryVisualCatalog.GetIconLabel(iconKey)">
-                        <partial name="_CategoryIconSvg" model="iconKey" />
-                    </span>
-                </label>
-            }
-            <details class="vz-cat-icon-more" open="@(shouldExpandIconList ? "open" : null)">
-                <summary class="vz-cat-icon-more-toggle" aria-label="Show more icon choices">+</summary>
-                <div class="vz-cat-icon-picker">
-                    @foreach (var iconKey in CategoryVisualCatalog.MoreIconKeys)
-                    {
-                        var optionId = $"create_icon_more_{iconKey}";
-                        <label class="vz-cat-choice-tile" for="@optionId">
-                            <input id="@optionId"
-                                   class="vz-cat-choice-input"
-                                   type="radio"
-                                   asp-for="IconKey"
-                                   value="@iconKey"
-                                   aria-label="@CategoryVisualCatalog.GetIconLabel(iconKey)" />
-                            <span class="vz-cat-icon-option" aria-hidden="true" title="@CategoryVisualCatalog.GetIconLabel(iconKey)">
-                                <partial name="_CategoryIconSvg" model="iconKey" />
-                            </span>
-                        </label>
-                    }
+        <input asp-for="IconKey" type="hidden" value="@selectedIconKey" data-vz-icon-value />
+        <div class="vz-cat-icon-picker" data-vz-icon-picker>
+            <div class="vz-cat-icon-grid" data-vz-icon-grid role="group" aria-label="Category icon quick selection"></div>
+            <div class="vz-cat-icon-library-modal"
+                 id="@iconLibraryModalId"
+                 data-vz-icon-library-modal
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="@iconLibraryTitleId"
+                 hidden>
+                <div class="vz-cat-icon-library-backdrop" data-vz-icon-library-close></div>
+                <div class="vz-cat-icon-library-panel" role="document">
+                    <div class="vz-cat-icon-library-header">
+                        <h3 id="@iconLibraryTitleId" class="vz-cat-icon-library-title">Choose an icon</h3>
+                        <button type="button"
+                                class="vz-cat-icon-library-close"
+                                data-vz-icon-library-close
+                                aria-label="Close icon library">&times;</button>
+                    </div>
+                    <div class="vz-cat-icon-library-search-wrap">
+                        <label class="visually-hidden" for="@iconSearchId">Search icons</label>
+                        <input id="@iconSearchId"
+                               class="form-control"
+                               type="search"
+                               placeholder="Search icons"
+                               autocomplete="off"
+                               data-vz-icon-search />
+                    </div>
+                    <div class="vz-cat-icon-library-scroll icon-modal-body">
+                        <div class="vz-cat-icon-library-grid icon-grid"
+                             data-vz-icon-library-grid
+                             role="list"
+                             aria-label="Category icon library"></div>
+                        <p class="vz-cat-icon-library-empty d-none" data-vz-icon-search-empty>No icons match your search.</p>
+                    </div>
                 </div>
-            </details>
+            </div>
         </div>
+        <p class="vz-cat-icon-note">Selected: <span data-vz-selected-icon-label>@CategoryVisualCatalog.GetIconLabel(selectedIconKey)</span></p>
         <span asp-validation-for="IconKey" class="text-danger"></span>
     </div>
 

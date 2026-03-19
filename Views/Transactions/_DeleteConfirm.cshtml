@@ -1,28 +1,29 @@
 @model Vizora.Models.Transaction
 
-<h3 class="h5">Are you sure you want to delete this transaction?</h3>
+@{
+    var categoryName = Model.Category?.Name ?? "Uncategorized";
+    var titleText = string.IsNullOrWhiteSpace(Model.Description) ? categoryName : Model.Description;
+    var summaryText = $"{categoryName} - {Model.TransactionDate:yyyy-MM-dd} - PHP {Model.Amount:N2}";
+    var typeBadgeClass = Model.Type == TransactionType.Income ? "vz-cat-badge-income" : "vz-cat-badge-expense";
+}
 
-<dl class="row mb-4">
-    <dt class="col-sm-4">Date</dt>
-    <dd class="col-sm-8">@Model.TransactionDate.ToString("yyyy-MM-dd")</dd>
+<div class="vz-modal-delete">
+    <p class="vz-modal-delete-lead">Are you sure you want to delete this transaction?</p>
 
-    <dt class="col-sm-4">Type</dt>
-    <dd class="col-sm-8">@Model.Type</dd>
-
-    <dt class="col-sm-4">Category</dt>
-    <dd class="col-sm-8">@(Model.Category?.Name ?? "Uncategorized")</dd>
-
-    <dt class="col-sm-4">Amount</dt>
-    <dd class="col-sm-8">PHP @Model.Amount.ToString("N2")</dd>
-
-    <dt class="col-sm-4">Description</dt>
-    <dd class="col-sm-8">@(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</dd>
-</dl>
-
-<form asp-action="Delete" method="post">
-    <input type="hidden" asp-for="Id" />
-    <div class="d-flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-danger">Delete</button>
-        <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+    <div class="vz-modal-delete-summary" role="group" aria-label="Transaction summary">
+        <div class="vz-modal-delete-meta">
+            <p class="vz-modal-delete-label">Transaction Name</p>
+            <p class="vz-modal-delete-value">@titleText</p>
+            <p class="vz-modal-delete-subvalue">@summaryText</p>
+        </div>
+        <span class="vz-cat-badge @typeBadgeClass">@Model.Type</span>
     </div>
-</form>
+
+    <form asp-action="Delete" method="post">
+        <input type="hidden" asp-for="Id" />
+        <div class="d-flex flex-wrap gap-2 justify-content-end vz-modal-delete-actions">
+            <a asp-action="Index" class="btn btn-outline-secondary" data-modal-close="true">Cancel</a>
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </div>
+    </form>
+</div>

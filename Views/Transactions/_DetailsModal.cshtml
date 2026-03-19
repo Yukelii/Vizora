@@ -1,33 +1,45 @@
 @model Vizora.Models.Transaction
 
-<div>
-    <dl class="row mb-4">
-        <dt class="col-sm-4">ID</dt>
-        <dd class="col-sm-8">@Model.Id</dd>
+@{
+    var categoryName = Model.Category?.Name ?? "Uncategorized";
+    var titleText = string.IsNullOrWhiteSpace(Model.Description) ? categoryName : Model.Description;
+    var iconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(Model.Category?.IconKey);
+    var colorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(Model.Category?.ColorKey);
+    var typeBadgeClass = Model.Type == TransactionType.Income ? "vz-cat-badge-income" : "vz-cat-badge-expense";
+}
 
-        <dt class="col-sm-4">Date</dt>
-        <dd class="col-sm-8">@Model.TransactionDate.ToString("yyyy-MM-dd")</dd>
+<div class="vz-modal-details">
+    <div class="vz-modal-details-head">
+        <span class="vz-cat-icon-tile vz-cat-color-@colorKey" aria-hidden="true">
+            <partial name="~/Views/Categories/_CategoryIconSvg.cshtml" model="iconKey" />
+        </span>
+        <div class="vz-modal-details-title-wrap">
+            <p class="vz-modal-details-title">@titleText</p>
+            <p class="vz-modal-details-subtitle">@categoryName - @Model.TransactionDate.ToString("yyyy-MM-dd")</p>
+        </div>
+        <span class="vz-cat-badge @typeBadgeClass">@Model.Type</span>
+    </div>
 
-        <dt class="col-sm-4">Type</dt>
-        <dd class="col-sm-8">@Model.Type</dd>
+    <div class="vz-modal-details-grid" role="group" aria-label="Transaction details">
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Amount</span>
+            <span class="vz-modal-details-value">PHP @Model.Amount.ToString("N2")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Category</span>
+            <span class="vz-modal-details-value">@categoryName</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Created</span>
+            <span class="vz-modal-details-value">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+        </div>
+        <div class="vz-modal-details-item">
+            <span class="vz-modal-details-label">Updated</span>
+            <span class="vz-modal-details-value">@Model.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+        </div>
+    </div>
 
-        <dt class="col-sm-4">Category</dt>
-        <dd class="col-sm-8">@(Model.Category?.Name ?? "Uncategorized")</dd>
-
-        <dt class="col-sm-4">Amount</dt>
-        <dd class="col-sm-8">PHP @Model.Amount.ToString("N2")</dd>
-
-        <dt class="col-sm-4">Description</dt>
-        <dd class="col-sm-8">@(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</dd>
-
-        <dt class="col-sm-4">Created At</dt>
-        <dd class="col-sm-8">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
-
-        <dt class="col-sm-4">Updated At</dt>
-        <dd class="col-sm-8">@Model.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
-    </dl>
-
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 vz-modal-details-actions">
         <a asp-action="Edit"
            asp-route-id="@Model.Id"
            class="btn btn-primary"
