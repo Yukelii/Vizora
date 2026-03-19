@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -143,7 +144,7 @@ namespace Vizora.Controllers
             var model = new TransactionUpsertViewModel
             {
                 Id = transaction.Id,
-                RowVersion = transaction.RowVersion,
+                RowVersion = Convert.ToHexString(transaction.RowVersion),
                 CategoryId = transaction.CategoryId,
                 Amount = transaction.Amount,
                 Description = transaction.Description,
@@ -170,10 +171,19 @@ namespace Vizora.Controllers
                 return View(model);
             }
 
+            if (!TryDecodeRowVersion(model.RowVersion, out var rowVersion))
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to process the record version. Please reload and try again.");
+                await PopulateCategoryDropdownAsync(model.CategoryId);
+                return View(model);
+            }
+
             var transaction = new Transaction
             {
                 Id = id,
-                RowVersion = model.RowVersion,
+                RowVersion = rowVersion,
                 CategoryId = model.CategoryId,
                 Amount = model.Amount,
                 Description = model.Description,
@@ -182,11 +192,52 @@ namespace Vizora.Controllers
 
             try
             {
-                var updated = await _transactionService.UpdateAsync(transaction);
-                if (!updated)
+                var updateResult = await _transactionService.UpdateAsync(transaction, model.ForceOverwrite);
+                if (updateResult.Status == UpdateOperationStatus.NotFound)
                 {
                     // Not found is returned when the record is absent or not owned by the user.
                     return NotFound();
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.ValidationFailed)
+                {
+                    ModelState.AddModelError(string.Empty, updateResult.ErrorMessage ?? "Unable to update transaction.");
+                    await PopulateCategoryDropdownAsync(model.CategoryId);
+                    return View(model);
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.Conflict && updateResult.Conflict != null)
+                {
+                    if (IsModalRequest())
+                    {
+                        var categories = await _categoryService.GetAllAsync();
+                        return PartialView(
+                            "~/Views/Shared/_Modal.cshtml",
+                            new Dictionary<string, object?>
+                            {
+                                ["Size"] = "md",
+                                ["Variant"] = "details",
+                                ["BodyPartial"] = "~/Views/Shared/_ConcurrencyModal.cshtml",
+                                ["BodyModel"] = BuildTransactionConflictModalModel(id, updateResult.Conflict, categories)
+                            });
+                    }
+
+                    model.RowVersion = updateResult.Conflict.DatabaseValues.RowVersionHex;
+                    model.ForceOverwrite = false;
+                    ModelState.Remove(nameof(model.RowVersion));
+                    ModelState.Remove(nameof(model.ForceOverwrite));
+                    ModelState.AddModelError(
+                        string.Empty,
+                        updateResult.ErrorMessage ?? "This record was modified while you were editing.");
+                    await PopulateCategoryDropdownAsync(model.CategoryId);
+                    return View(model);
+                }
+
+                if (updateResult.Status != UpdateOperationStatus.Success)
+                {
+                    ModelState.AddModelError(string.Empty, "Unable to update transaction.");
+                    await PopulateCategoryDropdownAsync(model.CategoryId);
+                    return View(model);
                 }
 
                 return RedirectToAction(nameof(Index));
@@ -282,6 +333,94 @@ namespace Vizora.Controllers
             // Provide both display labels and a lightweight map for UI type hints.
             ViewData["CategoryId"] = new SelectList(categories, "Id", "Name", selectedCategoryId);
             ViewData["CategoryTypeMap"] = categories.ToDictionary(c => c.Id, c => c.Type.ToString());
+        }
+
+        private static bool TryDecodeRowVersion(string? encodedRowVersion, out byte[] rowVersion)
+        {
+            rowVersion = Array.Empty<byte>();
+
+            if (string.IsNullOrWhiteSpace(encodedRowVersion))
+            {
+                return false;
+            }
+
+            try
+            {
+                rowVersion = Convert.FromHexString(encodedRowVersion.Trim());
+                return rowVersion.Length > 0;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private bool IsModalRequest()
+        {
+            return string.Equals(
+                Request.Headers["X-Requested-With"],
+                "XMLHttpRequest",
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private ConcurrencyModalViewModel BuildTransactionConflictModalModel(
+            int id,
+            ConcurrencyConflictResult<TransactionConflictSnapshot> conflict,
+            IReadOnlyList<Category> categories)
+        {
+            var current = conflict.CurrentValues;
+            var latest = conflict.DatabaseValues;
+            var categoryLookup = categories.ToDictionary(c => c.Id, c => c.Name);
+
+            var model = new ConcurrencyModalViewModel
+            {
+                EntityName = "transaction",
+                ReloadUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                ReloadModalTitle = "Edit Transaction",
+                OverwriteActionUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                OverwriteButtonLabel = "Overwrite"
+            };
+
+            model.FieldComparisons = new List<ConcurrencyFieldComparisonViewModel>
+            {
+                new()
+                {
+                    FieldLabel = "Category",
+                    YourValue = categoryLookup.GetValueOrDefault(current.CategoryId, "Unknown"),
+                    LatestValue = categoryLookup.GetValueOrDefault(latest.CategoryId, "Unknown")
+                },
+                new()
+                {
+                    FieldLabel = "Amount",
+                    YourValue = current.Amount.ToString("N2", CultureInfo.InvariantCulture),
+                    LatestValue = latest.Amount.ToString("N2", CultureInfo.InvariantCulture)
+                },
+                new()
+                {
+                    FieldLabel = "Description",
+                    YourValue = current.Description ?? "-",
+                    LatestValue = latest.Description ?? "-"
+                },
+                new()
+                {
+                    FieldLabel = "Transaction Date",
+                    YourValue = current.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    LatestValue = latest.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                }
+            };
+
+            model.HiddenFields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Id"] = id.ToString(CultureInfo.InvariantCulture),
+                ["RowVersion"] = latest.RowVersionHex,
+                ["ForceOverwrite"] = bool.TrueString,
+                ["CategoryId"] = current.CategoryId.ToString(CultureInfo.InvariantCulture),
+                ["Amount"] = current.Amount.ToString(CultureInfo.InvariantCulture),
+                ["Description"] = current.Description ?? string.Empty,
+                ["TransactionDate"] = current.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            };
+
+            return model;
         }
     }
 }

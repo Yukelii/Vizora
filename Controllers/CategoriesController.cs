@@ -108,7 +108,7 @@ namespace Vizora.Controllers
             var model = new CategoryUpsertViewModel
             {
                 Id = category.Id,
-                RowVersion = category.RowVersion,
+                RowVersion = Convert.ToHexString(category.RowVersion),
                 Name = category.Name,
                 Type = category.Type,
                 IconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(category.IconKey),
@@ -132,10 +132,18 @@ namespace Vizora.Controllers
                 return View(model);
             }
 
+            if (!TryDecodeRowVersion(model.RowVersion, out var rowVersion))
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to process the record version. Please reload and try again.");
+                return View(model);
+            }
+
             var category = new Category
             {
                 Id = id,
-                RowVersion = model.RowVersion,
+                RowVersion = rowVersion,
                 Name = model.Name,
                 Type = model.Type,
                 IconKey = model.IconKey,
@@ -144,11 +152,48 @@ namespace Vizora.Controllers
 
             try
             {
-                var updated = await _categoryService.UpdateAsync(category);
-                if (!updated)
+                var updateResult = await _categoryService.UpdateAsync(category, model.ForceOverwrite);
+                if (updateResult.Status == UpdateOperationStatus.NotFound)
                 {
                     // Not found is possible when record belongs to another user or was deleted.
                     return NotFound();
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.ValidationFailed)
+                {
+                    ModelState.AddModelError(string.Empty, updateResult.ErrorMessage ?? "Unable to update category.");
+                    return View(model);
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.Conflict && updateResult.Conflict != null)
+                {
+                    if (IsModalRequest())
+                    {
+                        return PartialView(
+                            "~/Views/Shared/_Modal.cshtml",
+                            new Dictionary<string, object?>
+                            {
+                                ["Size"] = "md",
+                                ["Variant"] = "details",
+                                ["BodyPartial"] = "~/Views/Shared/_ConcurrencyModal.cshtml",
+                                ["BodyModel"] = BuildCategoryConflictModalModel(id, updateResult.Conflict)
+                            });
+                    }
+
+                    model.RowVersion = updateResult.Conflict.DatabaseValues.RowVersionHex;
+                    model.ForceOverwrite = false;
+                    ModelState.Remove(nameof(model.RowVersion));
+                    ModelState.Remove(nameof(model.ForceOverwrite));
+                    ModelState.AddModelError(
+                        string.Empty,
+                        updateResult.ErrorMessage ?? "This record was modified while you were editing.");
+                    return View(model);
+                }
+
+                if (updateResult.Status != UpdateOperationStatus.Success)
+                {
+                    ModelState.AddModelError(string.Empty, "Unable to update category.");
+                    return View(model);
                 }
 
                 return RedirectToAction(nameof(Index));
@@ -217,6 +262,92 @@ namespace Vizora.Controllers
 
                 return View("Delete", category);
             }
+        }
+
+        private static bool TryDecodeRowVersion(string? encodedRowVersion, out byte[] rowVersion)
+        {
+            rowVersion = Array.Empty<byte>();
+
+            if (string.IsNullOrWhiteSpace(encodedRowVersion))
+            {
+                return false;
+            }
+
+            try
+            {
+                rowVersion = Convert.FromHexString(encodedRowVersion.Trim());
+                return rowVersion.Length > 0;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private bool IsModalRequest()
+        {
+            return string.Equals(
+                Request.Headers["X-Requested-With"],
+                "XMLHttpRequest",
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private ConcurrencyModalViewModel BuildCategoryConflictModalModel(
+            int id,
+            ConcurrencyConflictResult<CategoryConflictSnapshot> conflict)
+        {
+            var current = conflict.CurrentValues;
+            var latest = conflict.DatabaseValues;
+
+            var model = new ConcurrencyModalViewModel
+            {
+                EntityName = "category",
+                ReloadUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                ReloadModalTitle = "Edit Category",
+                OverwriteActionUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                OverwriteButtonLabel = "Overwrite"
+            };
+
+            model.FieldComparisons = new List<ConcurrencyFieldComparisonViewModel>
+            {
+                new()
+                {
+                    FieldLabel = "Name",
+                    YourValue = current.Name,
+                    LatestValue = latest.Name
+                },
+                new()
+                {
+                    FieldLabel = "Type",
+                    YourValue = current.Type.ToString(),
+                    LatestValue = latest.Type.ToString()
+                },
+                new()
+                {
+                    FieldLabel = "Icon",
+                    YourValue = CategoryVisualCatalog.GetIconLabel(current.IconKey),
+                    LatestValue = CategoryVisualCatalog.GetIconLabel(latest.IconKey)
+                },
+                new()
+                {
+                    FieldLabel = "Color",
+                    YourValue = CategoryVisualCatalog.GetColorLabel(current.ColorKey),
+                    LatestValue = CategoryVisualCatalog.GetColorLabel(latest.ColorKey)
+                }
+            };
+
+            model.HiddenFields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Id"] = id.ToString(),
+                ["RowVersion"] = latest.RowVersionHex,
+                ["ForceOverwrite"] = bool.TrueString,
+                ["Name"] = current.Name,
+                ["Type"] = ((int)current.Type).ToString(),
+                ["IconKey"] = current.IconKey,
+                ["ColorKey"] = current.ColorKey
+            };
+
+            return model;
         }
     }
 }

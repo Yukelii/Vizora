@@ -115,7 +115,7 @@ public class TransactionsControllerOwnershipTests
             throw new NotSupportedException();
         }
 
-        public Task<bool> UpdateAsync(Category category)
+        public Task<UpdateOperationResult<CategoryConflictSnapshot>> UpdateAsync(Category category, bool forceOverwrite = false)
         {
             throw new NotSupportedException();
         }

@@ -18,7 +18,7 @@ namespace Vizora.Services
 
         Task CreateAsync(BudgetUpsertRequest request);
 
-        Task<bool> UpdateAsync(int id, BudgetUpsertRequest request);
+        Task<UpdateOperationResult<BudgetConflictSnapshot>> UpdateAsync(int id, BudgetUpsertRequest request, bool forceOverwrite = false);
 
         Task<bool> DeleteAsync(int id);
     }
@@ -226,13 +226,17 @@ namespace Vizora.Services
             });
         }
 
-        public async Task<bool> UpdateAsync(int id, BudgetUpsertRequest request)
+        public async Task<UpdateOperationResult<BudgetConflictSnapshot>> UpdateAsync(
+            int id,
+            BudgetUpsertRequest request,
+            bool forceOverwrite = false)
         {
             var userId = _userContextService.GetRequiredUserId();
 
             if (request.RowVersion == null || request.RowVersion.Length == 0)
             {
-                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+                return UpdateOperationResult<BudgetConflictSnapshot>.ValidationFailed(
+                    "This record was modified by another user. Please reload and try again.");
             }
 
             var budget = await _context.Budgets
@@ -241,11 +245,22 @@ namespace Vizora.Services
 
             if (budget == null)
             {
-                return false;
+                return UpdateOperationResult<BudgetConflictSnapshot>.NotFound();
+            }
+
+            var incomingRowVersionHex = Convert.ToHexString(request.RowVersion);
+            var currentRowVersionHex = Convert.ToHexString(budget.RowVersion);
+            if (!request.RowVersion.AsSpan().SequenceEqual(budget.RowVersion))
+            {
+                _logger.LogInformation(
+                    "Budget concurrency token mismatch detected for BudgetId {BudgetId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                    id,
+                    incomingRowVersionHex,
+                    currentRowVersionHex);
             }
 
             _context.Entry(budget).Property(b => b.RowVersion).OriginalValue = request.RowVersion;
-            var oldValues = BuildBudgetAuditState(budget, budget.BudgetPeriod);
+            object oldValues = BuildBudgetAuditState(budget, budget.BudgetPeriod);
             var validatedRequest = await ValidateAndNormalizeAsync(userId, request);
 
             var duplicateBudget = await _context.Budgets
@@ -260,7 +275,8 @@ namespace Vizora.Services
 
             if (duplicateBudget)
             {
-                throw new InvalidOperationException("A budget already exists for the selected category and period.");
+                return UpdateOperationResult<BudgetConflictSnapshot>.ValidationFailed(
+                    "A budget already exists for the selected category and period.");
             }
 
             var originalBudgetPeriodId = budget.BudgetPeriodId;
@@ -282,9 +298,94 @@ namespace Vizora.Services
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException(
-                    "This record was modified by another user. Please reload and try again.",
-                    ex);
+                var entry = ex.Entries.SingleOrDefault();
+                if (entry?.Entity is not Budget)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Budget update concurrency conflict had no budget entry for BudgetId {BudgetId}.",
+                        id);
+                    return UpdateOperationResult<BudgetConflictSnapshot>.ValidationFailed(
+                        "This record was modified by another user. Please reload and try again.");
+                }
+
+                var databaseValues = await entry.GetDatabaseValuesAsync();
+                if (databaseValues == null)
+                {
+                    return UpdateOperationResult<BudgetConflictSnapshot>.NotFound();
+                }
+
+                var databaseBudget = await _context.Budgets
+                    .AsNoTracking()
+                    .Include(b => b.BudgetPeriod)
+                    .FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+
+                if (databaseBudget == null)
+                {
+                    return UpdateOperationResult<BudgetConflictSnapshot>.NotFound();
+                }
+
+                oldValues = BuildBudgetAuditState(databaseBudget, databaseBudget.BudgetPeriod);
+
+                if (forceOverwrite)
+                {
+                    entry.OriginalValues.SetValues(databaseValues);
+                    budget.CategoryId = validatedRequest.Category.Id;
+                    budget.BudgetPeriod = updatedBudgetPeriod;
+                    budget.PlannedAmount = validatedRequest.PlannedAmount;
+                    budget.UpdatedAt = DateTime.UtcNow;
+
+                    try
+                    {
+                        await _context.SaveChangesAsync();
+                    }
+                    catch (DbUpdateConcurrencyException retryEx)
+                    {
+                        _logger.LogWarning(
+                            retryEx,
+                            "Budget overwrite retry also hit concurrency for BudgetId {BudgetId}.",
+                            id);
+                        return UpdateOperationResult<BudgetConflictSnapshot>.ConflictDetected(
+                            new ConcurrencyConflictResult<BudgetConflictSnapshot>
+                            {
+                                CurrentValues = ToConflictSnapshot(
+                                    budget,
+                                    budget.BudgetPeriod,
+                                    request.RowVersion),
+                                DatabaseValues = ToConflictSnapshot(
+                                    databaseBudget,
+                                    databaseBudget.BudgetPeriod)
+                            },
+                            "This record was modified by another user. Please reload and try again.");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Budget update concurrency conflict for BudgetId {BudgetId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                        id,
+                        incomingRowVersionHex,
+                        currentRowVersionHex);
+
+                    return UpdateOperationResult<BudgetConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<BudgetConflictSnapshot>
+                        {
+                            CurrentValues = new BudgetConflictSnapshot
+                            {
+                                RowVersionHex = incomingRowVersionHex,
+                                CategoryId = validatedRequest.Category.Id,
+                                PlannedAmount = validatedRequest.PlannedAmount,
+                                PeriodType = validatedRequest.PeriodType,
+                                StartDate = validatedRequest.StartDateUtc.Date,
+                                EndDate = validatedRequest.EndDateUtc.Date
+                            },
+                            DatabaseValues = ToConflictSnapshot(
+                                databaseBudget,
+                                databaseBudget.BudgetPeriod)
+                        },
+                        "This record was modified while you were editing.");
+                }
             }
             await RemoveBudgetPeriodIfUnusedAsync(userId, originalBudgetPeriodId, budget.BudgetPeriodId);
 
@@ -297,7 +398,7 @@ namespace Vizora.Services
                 NewValues = BuildBudgetAuditState(budget, budget.BudgetPeriod)
             });
 
-            return true;
+            return UpdateOperationResult<BudgetConflictSnapshot>.Success();
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -499,6 +600,25 @@ namespace Vizora.Services
                 PeriodType = period?.Type.ToString(),
                 StartDate = period?.StartDate,
                 EndDate = period?.EndDate
+            };
+        }
+
+        private static BudgetConflictSnapshot ToConflictSnapshot(
+            Budget budget,
+            BudgetPeriod? period,
+            byte[]? overrideRowVersion = null)
+        {
+            var rowVersion = overrideRowVersion ?? budget.RowVersion;
+            return new BudgetConflictSnapshot
+            {
+                RowVersionHex = rowVersion != null && rowVersion.Length > 0
+                    ? Convert.ToHexString(rowVersion)
+                    : string.Empty,
+                CategoryId = budget.CategoryId,
+                PlannedAmount = budget.PlannedAmount,
+                PeriodType = period?.Type ?? BudgetPeriodType.Custom,
+                StartDate = (period?.StartDate ?? DateTime.UtcNow).Date,
+                EndDate = (period?.EndDate ?? DateTime.UtcNow).Date
             };
         }
 

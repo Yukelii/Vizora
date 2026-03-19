@@ -327,7 +327,7 @@ public class FinanceAnalyticsServiceTests
             throw new NotSupportedException("Not used in analytics tests.");
         }
 
-        public Task<bool> UpdateAsync(int id, BudgetUpsertRequest request)
+        public Task<UpdateOperationResult<BudgetConflictSnapshot>> UpdateAsync(int id, BudgetUpsertRequest request, bool forceOverwrite = false)
         {
             throw new NotSupportedException("Not used in analytics tests.");
         }

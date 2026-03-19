@@ -93,9 +93,35 @@ public class CategoryServiceTests
 
         var reloaded = await context.Categories.AsNoTracking().SingleAsync(c => c.Id == otherCategory.Id);
 
-        Assert.False(updated);
+        Assert.Equal(UpdateOperationStatus.NotFound, updated.Status);
         Assert.Equal("Utilities", reloaded.Name);
         Assert.Equal(OtherUserId, reloaded.UserId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithValidRowVersionAndChangedValues_Succeeds()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Food", TransactionType.Expense);
+        var originalRowVersion = category.RowVersion.ToArray();
+        var service = CreateService(context);
+
+        var updated = await service.UpdateAsync(new Category
+        {
+            Id = category.Id,
+            RowVersion = originalRowVersion,
+            Name = "Dining Out",
+            Type = TransactionType.Expense,
+            IconKey = category.IconKey,
+            ColorKey = category.ColorKey
+        });
+
+        var reloaded = await context.Categories.AsNoTracking().SingleAsync(c => c.Id == category.Id);
+
+        Assert.Equal(UpdateOperationStatus.Success, updated.Status);
+        Assert.Equal("Dining Out", reloaded.Name);
+        Assert.NotEmpty(reloaded.RowVersion);
+        Assert.False(originalRowVersion.AsSpan().SequenceEqual(reloaded.RowVersion));
     }
 
     private static CategoryService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)

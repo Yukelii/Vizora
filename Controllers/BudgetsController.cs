@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -68,7 +69,14 @@ namespace Vizora.Controllers
                 return View(model);
             }
 
-            var request = MapToRequest(model);
+            if (!TryMapToRequest(model, out var request))
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to process the record version. Please reload and try again.");
+                await PopulateExpenseCategoriesAsync(model.CategoryId);
+                return View(model);
+            }
 
             try
             {
@@ -99,7 +107,7 @@ namespace Vizora.Controllers
             var model = new BudgetUpsertViewModel
             {
                 Id = budget.Id,
-                RowVersion = budget.RowVersion,
+                RowVersion = Convert.ToHexString(budget.RowVersion),
                 CategoryId = budget.CategoryId,
                 PlannedAmount = budget.PlannedAmount,
                 PeriodType = budget.BudgetPeriod.Type,
@@ -126,14 +134,62 @@ namespace Vizora.Controllers
                 return View(model);
             }
 
-            var request = MapToRequest(model);
+            if (!TryMapToRequest(model, out var request))
+            {
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to process the record version. Please reload and try again.");
+                await PopulateExpenseCategoriesAsync(model.CategoryId);
+                return View(model);
+            }
 
             try
             {
-                var updated = await _budgetService.UpdateAsync(id, request);
-                if (!updated)
+                var updateResult = await _budgetService.UpdateAsync(id, request, model.ForceOverwrite);
+                if (updateResult.Status == UpdateOperationStatus.NotFound)
                 {
                     return NotFound();
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.ValidationFailed)
+                {
+                    ModelState.AddModelError(string.Empty, updateResult.ErrorMessage ?? "Unable to update budget.");
+                    await PopulateExpenseCategoriesAsync(model.CategoryId);
+                    return View(model);
+                }
+
+                if (updateResult.Status == UpdateOperationStatus.Conflict && updateResult.Conflict != null)
+                {
+                    if (IsModalRequest())
+                    {
+                        var categories = await _categoryService.GetAllAsync();
+                        return PartialView(
+                            "~/Views/Shared/_Modal.cshtml",
+                            new Dictionary<string, object?>
+                            {
+                                ["Size"] = "md",
+                                ["Variant"] = "details",
+                                ["BodyPartial"] = "~/Views/Shared/_ConcurrencyModal.cshtml",
+                                ["BodyModel"] = BuildBudgetConflictModalModel(id, updateResult.Conflict, categories)
+                            });
+                    }
+
+                    model.RowVersion = updateResult.Conflict.DatabaseValues.RowVersionHex;
+                    model.ForceOverwrite = false;
+                    ModelState.Remove(nameof(model.RowVersion));
+                    ModelState.Remove(nameof(model.ForceOverwrite));
+                    ModelState.AddModelError(
+                        string.Empty,
+                        updateResult.ErrorMessage ?? "This record was modified while you were editing.");
+                    await PopulateExpenseCategoriesAsync(model.CategoryId);
+                    return View(model);
+                }
+
+                if (updateResult.Status != UpdateOperationStatus.Success)
+                {
+                    ModelState.AddModelError(string.Empty, "Unable to update budget.");
+                    await PopulateExpenseCategoriesAsync(model.CategoryId);
+                    return View(model);
                 }
 
                 return RedirectToAction(nameof(Index));
@@ -175,17 +231,33 @@ namespace Vizora.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        private static BudgetUpsertRequest MapToRequest(BudgetUpsertViewModel model)
+        private static bool TryMapToRequest(BudgetUpsertViewModel model, out BudgetUpsertRequest request)
         {
-            return new BudgetUpsertRequest
+            request = new BudgetUpsertRequest
             {
-                RowVersion = model.RowVersion,
+                RowVersion = Array.Empty<byte>(),
                 CategoryId = model.CategoryId,
                 PlannedAmount = model.PlannedAmount,
                 PeriodType = model.PeriodType,
                 StartDate = model.StartDate,
                 EndDate = model.EndDate
             };
+
+            if (string.IsNullOrWhiteSpace(model.RowVersion))
+            {
+                return true;
+            }
+
+            try
+            {
+                request.RowVersion = Convert.FromHexString(model.RowVersion.Trim());
+                return request.RowVersion.Length > 0;
+            }
+            catch (FormatException)
+            {
+                request.RowVersion = Array.Empty<byte>();
+                return false;
+            }
         }
 
         private async Task PopulateExpenseCategoriesAsync(int? selectedCategoryId)
@@ -202,6 +274,81 @@ namespace Vizora.Controllers
             }
 
             ViewData["CategoryId"] = new SelectList(expenseCategories, "Id", "Name", selectedCategoryId);
+        }
+
+        private bool IsModalRequest()
+        {
+            return string.Equals(
+                Request.Headers["X-Requested-With"],
+                "XMLHttpRequest",
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private ConcurrencyModalViewModel BuildBudgetConflictModalModel(
+            int id,
+            ConcurrencyConflictResult<BudgetConflictSnapshot> conflict,
+            IReadOnlyList<Category> categories)
+        {
+            var current = conflict.CurrentValues;
+            var latest = conflict.DatabaseValues;
+            var categoryLookup = categories.ToDictionary(c => c.Id, c => c.Name);
+
+            var model = new ConcurrencyModalViewModel
+            {
+                EntityName = "budget",
+                ReloadUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                ReloadModalTitle = "Edit Budget",
+                OverwriteActionUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                OverwriteButtonLabel = "Overwrite"
+            };
+
+            model.FieldComparisons = new List<ConcurrencyFieldComparisonViewModel>
+            {
+                new()
+                {
+                    FieldLabel = "Category",
+                    YourValue = categoryLookup.GetValueOrDefault(current.CategoryId, "Unknown"),
+                    LatestValue = categoryLookup.GetValueOrDefault(latest.CategoryId, "Unknown")
+                },
+                new()
+                {
+                    FieldLabel = "Planned Amount",
+                    YourValue = current.PlannedAmount.ToString("N2", CultureInfo.InvariantCulture),
+                    LatestValue = latest.PlannedAmount.ToString("N2", CultureInfo.InvariantCulture)
+                },
+                new()
+                {
+                    FieldLabel = "Period Type",
+                    YourValue = current.PeriodType.ToString(),
+                    LatestValue = latest.PeriodType.ToString()
+                },
+                new()
+                {
+                    FieldLabel = "Start Date",
+                    YourValue = current.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    LatestValue = latest.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                },
+                new()
+                {
+                    FieldLabel = "End Date",
+                    YourValue = current.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    LatestValue = latest.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                }
+            };
+
+            model.HiddenFields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Id"] = id.ToString(CultureInfo.InvariantCulture),
+                ["RowVersion"] = latest.RowVersionHex,
+                ["ForceOverwrite"] = bool.TrueString,
+                ["CategoryId"] = current.CategoryId.ToString(CultureInfo.InvariantCulture),
+                ["PlannedAmount"] = current.PlannedAmount.ToString(CultureInfo.InvariantCulture),
+                ["PeriodType"] = ((int)current.PeriodType).ToString(CultureInfo.InvariantCulture),
+                ["StartDate"] = current.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ["EndDate"] = current.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            };
+
+            return model;
         }
     }
 }

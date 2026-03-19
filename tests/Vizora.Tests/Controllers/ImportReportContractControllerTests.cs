@@ -144,7 +144,7 @@ public class ImportReportContractControllerTests
             throw new NotSupportedException();
         }
 
-        public Task<bool> UpdateAsync(Transaction transaction)
+        public Task<UpdateOperationResult<TransactionConflictSnapshot>> UpdateAsync(Transaction transaction, bool forceOverwrite = false)
         {
             throw new NotSupportedException();
         }
@@ -172,7 +172,7 @@ public class ImportReportContractControllerTests
             throw new NotSupportedException();
         }
 
-        public Task<bool> UpdateAsync(Category category)
+        public Task<UpdateOperationResult<CategoryConflictSnapshot>> UpdateAsync(Category category, bool forceOverwrite = false)
         {
             throw new NotSupportedException();
         }

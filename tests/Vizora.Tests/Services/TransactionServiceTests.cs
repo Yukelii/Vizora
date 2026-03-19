@@ -127,6 +127,48 @@ public class TransactionServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_WithValidRowVersionAndChangedValues_Succeeds()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Food", TransactionType.Expense);
+        var transaction = new Transaction
+        {
+            UserId = TestDataSeeder.DefaultUserId,
+            CategoryId = category.Id,
+            Type = TransactionType.Expense,
+            Amount = 25m,
+            Description = "Initial",
+            TransactionDate = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        context.Transactions.Add(transaction);
+        await context.SaveChangesAsync();
+
+        var originalRowVersion = transaction.RowVersion.ToArray();
+        var service = CreateService(context);
+
+        var updated = await service.UpdateAsync(new Transaction
+        {
+            Id = transaction.Id,
+            RowVersion = originalRowVersion,
+            CategoryId = category.Id,
+            Amount = 42.75m,
+            Description = "Updated",
+            TransactionDate = transaction.TransactionDate
+        });
+
+        var reloaded = await context.Transactions.AsNoTracking().SingleAsync(t => t.Id == transaction.Id);
+
+        Assert.Equal(UpdateOperationStatus.Success, updated.Status);
+        Assert.Equal(42.75m, reloaded.Amount);
+        Assert.Equal("Updated", reloaded.Description);
+        Assert.NotEmpty(reloaded.RowVersion);
+        Assert.False(originalRowVersion.AsSpan().SequenceEqual(reloaded.RowVersion));
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenAuditLoggingFails_StillPersistsTransaction()
     {
         await using var context = TestDbContextFactory.Create();

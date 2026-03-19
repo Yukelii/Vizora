@@ -14,7 +14,7 @@ namespace Vizora.Services
 
         Task CreateAsync(Category category);
 
-        Task<bool> UpdateAsync(Category category);
+        Task<UpdateOperationResult<CategoryConflictSnapshot>> UpdateAsync(Category category, bool forceOverwrite = false);
 
         Task<bool> DeleteAsync(int id);
     }
@@ -105,14 +105,15 @@ namespace Vizora.Services
             });
         }
 
-        public async Task<bool> UpdateAsync(Category category)
+        public async Task<UpdateOperationResult<CategoryConflictSnapshot>> UpdateAsync(Category category, bool forceOverwrite = false)
         {
             var userId = _userContextService.GetRequiredUserId();
             var normalizedName = NormalizeName(category.Name);
 
             if (category.RowVersion == null || category.RowVersion.Length == 0)
             {
-                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+                return UpdateOperationResult<CategoryConflictSnapshot>.ValidationFailed(
+                    "This record was modified by another user. Please reload and try again.");
             }
 
             var existing = await _context.Categories
@@ -120,11 +121,11 @@ namespace Vizora.Services
 
             if (existing == null)
             {
-                return false;
+                return UpdateOperationResult<CategoryConflictSnapshot>.NotFound();
             }
 
-            _context.Entry(existing).Property(c => c.RowVersion).OriginalValue = category.RowVersion;
-            var oldValues = BuildCategoryAuditState(existing);
+            var normalizedIconKey = NormalizeAndValidateIconKey(category.IconKey);
+            var normalizedColorKey = NormalizeAndValidateColorKey(category.ColorKey);
 
             // Prevent duplicate name/type collisions after updates.
             var duplicate = await _context.Categories.AnyAsync(c =>
@@ -135,13 +136,28 @@ namespace Vizora.Services
 
             if (duplicate)
             {
-                throw new InvalidOperationException("A category with this name and type already exists.");
+                return UpdateOperationResult<CategoryConflictSnapshot>.ValidationFailed(
+                    "A category with this name and type already exists.");
             }
+
+            var incomingRowVersionHex = Convert.ToHexString(category.RowVersion);
+            var currentRowVersionHex = Convert.ToHexString(existing.RowVersion);
+            if (!category.RowVersion.AsSpan().SequenceEqual(existing.RowVersion))
+            {
+                _logger.LogInformation(
+                    "Category concurrency token mismatch detected for CategoryId {CategoryId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                    category.Id,
+                    incomingRowVersionHex,
+                    currentRowVersionHex);
+            }
+
+            _context.Entry(existing).Property(c => c.RowVersion).OriginalValue = category.RowVersion;
+            object oldValues = BuildCategoryAuditState(existing);
 
             existing.Name = normalizedName;
             existing.Type = category.Type;
-            existing.IconKey = NormalizeAndValidateIconKey(category.IconKey);
-            existing.ColorKey = NormalizeAndValidateColorKey(category.ColorKey);
+            existing.IconKey = normalizedIconKey;
+            existing.ColorKey = normalizedColorKey;
 
             try
             {
@@ -149,9 +165,78 @@ namespace Vizora.Services
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException(
-                    "This record was modified by another user. Please reload and try again.",
-                    ex);
+                var entry = ex.Entries.SingleOrDefault();
+                if (entry?.Entity is not Category)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Category update concurrency conflict had no category entry for CategoryId {CategoryId}.",
+                        category.Id);
+                    return UpdateOperationResult<CategoryConflictSnapshot>.ValidationFailed(
+                        "This record was modified by another user. Please reload and try again.");
+                }
+
+                var databaseValues = await entry.GetDatabaseValuesAsync();
+                if (databaseValues == null)
+                {
+                    return UpdateOperationResult<CategoryConflictSnapshot>.NotFound();
+                }
+
+                var databaseCategory = (Category)databaseValues.ToObject();
+                oldValues = BuildCategoryAuditState(databaseCategory);
+
+                if (forceOverwrite)
+                {
+                    entry.OriginalValues.SetValues(databaseValues);
+                    existing.Name = normalizedName;
+                    existing.Type = category.Type;
+                    existing.IconKey = normalizedIconKey;
+                    existing.ColorKey = normalizedColorKey;
+
+                    try
+                    {
+                        await _context.SaveChangesAsync();
+                    }
+                    catch (DbUpdateConcurrencyException retryEx)
+                    {
+                        _logger.LogWarning(
+                            retryEx,
+                            "Category overwrite retry also hit concurrency for CategoryId {CategoryId}.",
+                            category.Id);
+                        return UpdateOperationResult<CategoryConflictSnapshot>.ConflictDetected(
+                            new ConcurrencyConflictResult<CategoryConflictSnapshot>
+                            {
+                                CurrentValues = ToConflictSnapshot(existing),
+                                DatabaseValues = ToConflictSnapshot(databaseCategory)
+                            },
+                            "This record was modified by another user. Please reload and try again.");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Category update concurrency conflict for CategoryId {CategoryId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                        category.Id,
+                        incomingRowVersionHex,
+                        currentRowVersionHex);
+
+                    return UpdateOperationResult<CategoryConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<CategoryConflictSnapshot>
+                        {
+                            CurrentValues = new CategoryConflictSnapshot
+                            {
+                                RowVersionHex = incomingRowVersionHex,
+                                Name = normalizedName,
+                                Type = category.Type,
+                                IconKey = normalizedIconKey,
+                                ColorKey = normalizedColorKey
+                            },
+                            DatabaseValues = ToConflictSnapshot(databaseCategory)
+                        },
+                        "This record was modified while you were editing.");
+                }
+
             }
 
             await TryLogAuditAsync(new AuditLogRequest
@@ -163,7 +248,7 @@ namespace Vizora.Services
                 NewValues = BuildCategoryAuditState(existing)
             });
 
-            return true;
+            return UpdateOperationResult<CategoryConflictSnapshot>.Success();
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -255,6 +340,20 @@ namespace Vizora.Services
                 Type = category.Type.ToString(),
                 category.IconKey,
                 category.ColorKey
+            };
+        }
+
+        private static CategoryConflictSnapshot ToConflictSnapshot(Category category)
+        {
+            return new CategoryConflictSnapshot
+            {
+                RowVersionHex = category.RowVersion != null && category.RowVersion.Length > 0
+                    ? Convert.ToHexString(category.RowVersion)
+                    : string.Empty,
+                Name = category.Name,
+                Type = category.Type,
+                IconKey = category.IconKey,
+                ColorKey = category.ColorKey
             };
         }
 

@@ -1818,6 +1818,55 @@ body {
     justify-content: flex-end;
 }
 
+.vz-concurrency-modal {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.vz-concurrency-title {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--vz-ink);
+}
+
+.vz-concurrency-message {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--vz-subtle);
+}
+
+.vz-concurrency-table-wrap {
+    border: 1px solid var(--vz-border);
+    border-radius: 0.7rem;
+    overflow: hidden;
+    background: var(--vz-surface-muted);
+}
+
+.vz-concurrency-table thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vz-subtle);
+    border-bottom: 1px solid var(--vz-border);
+    background: #f4f8f6;
+}
+
+.vz-concurrency-table tbody th,
+.vz-concurrency-table tbody td {
+    font-size: 0.82rem;
+    color: var(--vz-ink);
+    border-color: var(--vz-border);
+}
+
+.vz-concurrency-table tbody th {
+    width: 22%;
+    font-weight: 700;
+}
+
+.vz-concurrency-actions {
+    padding-top: 0.15rem;
+}
+
 @media (max-width: 1200px) {
     .vz-metrics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

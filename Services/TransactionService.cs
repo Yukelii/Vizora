@@ -16,7 +16,7 @@ namespace Vizora.Services
 
         Task CreateAsync(Transaction transaction);
 
-        Task<bool> UpdateAsync(Transaction transaction);
+        Task<UpdateOperationResult<TransactionConflictSnapshot>> UpdateAsync(Transaction transaction, bool forceOverwrite = false);
 
         Task<bool> DeleteAsync(int id);
     }
@@ -183,13 +183,14 @@ namespace Vizora.Services
             });
         }
 
-        public async Task<bool> UpdateAsync(Transaction transaction)
+        public async Task<UpdateOperationResult<TransactionConflictSnapshot>> UpdateAsync(Transaction transaction, bool forceOverwrite = false)
         {
             var userId = _userContextService.GetRequiredUserId();
 
             if (transaction.RowVersion == null || transaction.RowVersion.Length == 0)
             {
-                throw new InvalidOperationException("This record was modified by another user. Please reload and try again.");
+                return UpdateOperationResult<TransactionConflictSnapshot>.ValidationFailed(
+                    "This record was modified by another user. Please reload and try again.");
             }
 
             var existing = await _context.Transactions
@@ -197,11 +198,22 @@ namespace Vizora.Services
 
             if (existing == null)
             {
-                return false;
+                return UpdateOperationResult<TransactionConflictSnapshot>.NotFound();
+            }
+
+            var incomingRowVersionHex = Convert.ToHexString(transaction.RowVersion);
+            var currentRowVersionHex = Convert.ToHexString(existing.RowVersion);
+            if (!transaction.RowVersion.AsSpan().SequenceEqual(existing.RowVersion))
+            {
+                _logger.LogInformation(
+                    "Transaction concurrency token mismatch detected for TransactionId {TransactionId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                    transaction.Id,
+                    incomingRowVersionHex,
+                    currentRowVersionHex);
             }
 
             _context.Entry(existing).Property(t => t.RowVersion).OriginalValue = transaction.RowVersion;
-            var oldValues = BuildTransactionAuditState(existing);
+            object oldValues = BuildTransactionAuditState(existing);
 
             // Re-validate category ownership and keep type/category consistency.
             var category = await ValidateCategoryAsync(userId, transaction.CategoryId);
@@ -226,9 +238,83 @@ namespace Vizora.Services
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException(
-                    "This record was modified by another user. Please reload and try again.",
-                    ex);
+                var entry = ex.Entries.SingleOrDefault();
+                if (entry?.Entity is not Transaction)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Transaction update concurrency conflict had no transaction entry for TransactionId {TransactionId}.",
+                        transaction.Id);
+                    return UpdateOperationResult<TransactionConflictSnapshot>.ValidationFailed(
+                        "This record was modified by another user. Please reload and try again.");
+                }
+
+                var databaseValues = await entry.GetDatabaseValuesAsync();
+                if (databaseValues == null)
+                {
+                    return UpdateOperationResult<TransactionConflictSnapshot>.NotFound();
+                }
+
+                var databaseTransaction = (Transaction)databaseValues.ToObject();
+                oldValues = BuildTransactionAuditState(databaseTransaction);
+
+                if (forceOverwrite)
+                {
+                    entry.OriginalValues.SetValues(databaseValues);
+                    existing.CategoryId = category.Id;
+                    existing.Amount = Math.Round(transaction.Amount, 2);
+                    existing.Type = category.Type;
+                    existing.Description = string.IsNullOrWhiteSpace(transaction.Description)
+                        ? null
+                        : transaction.Description.Trim();
+                    existing.TransactionDate = NormalizeUtc(transaction.TransactionDate);
+                    existing.UpdatedAt = DateTime.UtcNow;
+
+                    try
+                    {
+                        await _context.SaveChangesAsync();
+                    }
+                    catch (DbUpdateConcurrencyException retryEx)
+                    {
+                        _logger.LogWarning(
+                            retryEx,
+                            "Transaction overwrite retry also hit concurrency for TransactionId {TransactionId}.",
+                            transaction.Id);
+                        return UpdateOperationResult<TransactionConflictSnapshot>.ConflictDetected(
+                            new ConcurrencyConflictResult<TransactionConflictSnapshot>
+                            {
+                                CurrentValues = ToConflictSnapshot(existing),
+                                DatabaseValues = ToConflictSnapshot(databaseTransaction)
+                            },
+                            "This record was modified by another user. Please reload and try again.");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Transaction update concurrency conflict for TransactionId {TransactionId}. IncomingToken={IncomingToken}, CurrentToken={CurrentToken}",
+                        transaction.Id,
+                        incomingRowVersionHex,
+                        currentRowVersionHex);
+
+                    return UpdateOperationResult<TransactionConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<TransactionConflictSnapshot>
+                        {
+                            CurrentValues = new TransactionConflictSnapshot
+                            {
+                                RowVersionHex = incomingRowVersionHex,
+                                CategoryId = category.Id,
+                                Amount = Math.Round(transaction.Amount, 2),
+                                Description = string.IsNullOrWhiteSpace(transaction.Description)
+                                    ? null
+                                    : transaction.Description.Trim(),
+                                TransactionDate = NormalizeUtc(transaction.TransactionDate)
+                            },
+                            DatabaseValues = ToConflictSnapshot(databaseTransaction)
+                        },
+                        "This record was modified while you were editing.");
+                }
             }
 
             await TryLogAuditAsync(new AuditLogRequest
@@ -240,7 +326,7 @@ namespace Vizora.Services
                 NewValues = BuildTransactionAuditState(existing)
             });
 
-            return true;
+            return UpdateOperationResult<TransactionConflictSnapshot>.Success();
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -319,6 +405,20 @@ namespace Vizora.Services
                 transaction.CategoryId,
                 Type = transaction.Type.ToString(),
                 Amount = Math.Round(transaction.Amount, 2),
+                TransactionDate = transaction.TransactionDate
+            };
+        }
+
+        private static TransactionConflictSnapshot ToConflictSnapshot(Transaction transaction)
+        {
+            return new TransactionConflictSnapshot
+            {
+                RowVersionHex = transaction.RowVersion != null && transaction.RowVersion.Length > 0
+                    ? Convert.ToHexString(transaction.RowVersion)
+                    : string.Empty,
+                CategoryId = transaction.CategoryId,
+                Amount = Math.Round(transaction.Amount, 2),
+                Description = transaction.Description,
                 TransactionDate = transaction.TransactionDate
             };
         }
