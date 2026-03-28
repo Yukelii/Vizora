@@ -1,4 +1,5 @@
 @model Vizora.Models.CategoryUpsertViewModel
+@using Vizora.Models
 @{
     var isExpenseSelected = Model.Type == TransactionType.Expense;
     var isIncomeSelected = !isExpenseSelected;
@@ -6,18 +7,28 @@
     var iconLibraryModalId = "edit_icon_library_modal";
     var iconLibraryTitleId = "edit_icon_library_title";
     var iconSearchId = "edit_icon_library_search";
+    var conflictBanner = ViewData["ModalConflictBanner"] as ModalConflictBannerViewModel;
 }
 
 <form asp-action="Edit" method="post" data-modal-form="edit-category" class="vz-cat-modal-form">
-    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+    <div asp-validation-summary="All"
+         class="alert alert-danger vz-modal-validation-summary mb-0"
+         role="alert"
+         aria-live="assertive"
+         data-vz-modal-validation-summary="true"></div>
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="RowVersion" />
     <input type="hidden" asp-for="ForceOverwrite" />
 
+    @if (conflictBanner != null)
+    {
+        <partial name="~/Views/Shared/_ModalConflictBanner.cshtml" model="conflictBanner" />
+    }
+
     <div class="vz-cat-modal-field">
         <label asp-for="Name" class="form-label">Category Name</label>
         <input asp-for="Name" class="form-control" placeholder="e.g. Groceries" />
-        <span asp-validation-for="Name" class="text-danger"></span>
+        <span asp-validation-for="Name" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <div class="vz-cat-modal-field">
@@ -40,7 +51,7 @@
                 <span class="vz-cat-type-pill">Income</span>
             </label>
         </div>
-        <span asp-validation-for="Type" class="text-danger"></span>
+        <span asp-validation-for="Type" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <div class="vz-cat-modal-field vz-cat-icon-section">
@@ -84,7 +95,7 @@
             </div>
         </div>
         <p class="vz-cat-icon-note">Selected: <span data-vz-selected-icon-label>@CategoryVisualCatalog.GetIconLabel(selectedIconKey)</span></p>
-        <span asp-validation-for="IconKey" class="text-danger"></span>
+        <span asp-validation-for="IconKey" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <div class="vz-cat-modal-field">
@@ -104,7 +115,7 @@
                 </label>
             }
         </div>
-        <span asp-validation-for="ColorKey" class="text-danger"></span>
+        <span asp-validation-for="ColorKey" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <div class="d-flex flex-wrap gap-2 justify-content-end vz-cat-modal-actions">

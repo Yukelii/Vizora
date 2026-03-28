@@ -1,0 +1,67 @@
+@model Vizora.Models.ModalConflictBannerViewModel
+
+@{
+    var hasComparisons = Model.FieldComparisons?.Count > 0;
+    var allowOverwrite = Model.AllowOverwrite;
+}
+
+<div class="alert alert-warning" role="alert" data-vz-modal-conflict-banner="true" data-vz-modal-conflict-root="true" tabindex="-1">
+    <p class="mb-2">@Model.Message</p>
+
+    @if (hasComparisons)
+    {
+        <div class="vz-concurrency-table-wrap mb-3" role="region" aria-label="Conflict comparison">
+            <table class="table table-sm align-middle mb-0 vz-concurrency-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Field</th>
+                        <th scope="col">Your Changes</th>
+                        <th scope="col">Latest Saved</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.FieldComparisons)
+                    {
+                        <tr>
+                            <th scope="row">@row.FieldLabel</th>
+                            <td>@row.YourValue</td>
+                            <td>@row.LatestValue</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="d-flex flex-wrap gap-2">
+        <a href="@Model.ReloadUrl"
+           class="btn btn-sm btn-outline-warning"
+           data-modal="true"
+           data-modal-title="@Model.ReloadModalTitle">Reload Latest</a>
+
+        @if (allowOverwrite)
+        {
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <div class="form-check m-0">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="true"
+                           data-vz-modal-overwrite-confirm="true"
+                           id="modalOverwriteConfirm" />
+                    <label class="form-check-label small" for="modalOverwriteConfirm">
+                        @Model.OverwriteConfirmationLabel
+                    </label>
+                </div>
+                <button type="button"
+                        class="btn btn-sm btn-warning"
+                        data-vz-modal-force-overwrite="true"
+                        data-vz-modal-overwrite-field="@Model.OverwriteFieldName"
+                        disabled>
+                    @Model.OverwriteButtonLabel
+                </button>
+            </div>
+        }
+
+        <span class="small text-muted align-self-center">Keep editing to retry safely.</span>
+    </div>
+</div>

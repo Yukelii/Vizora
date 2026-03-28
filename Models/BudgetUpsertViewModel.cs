@@ -6,7 +6,7 @@ namespace Vizora.Models
     {
         public int? Id { get; set; }
 
-        public string RowVersion { get; set; } = string.Empty;
+        public string? RowVersion { get; set; }
 
         public bool ForceOverwrite { get; set; }
 

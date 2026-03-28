@@ -1,0 +1,6 @@
+@model Vizora.Models.CategoryPresentationViewModel
+
+<span class="vz-trx-chip vz-trx-chip-category vz-cat-color-@Model.ColorKey">
+    <partial name="~/Views/Categories/_CategoryIconSvg.cshtml" model="Model.IconKey" />
+    @Model.Name
+</span>

@@ -169,6 +169,44 @@ public class TransactionServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_WithMissingRowVersion_ReturnsConflictWithReloadGuidance()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Food", TransactionType.Expense);
+        var transaction = new Transaction
+        {
+            UserId = TestDataSeeder.DefaultUserId,
+            CategoryId = category.Id,
+            Type = TransactionType.Expense,
+            Amount = 25m,
+            Description = "Initial",
+            TransactionDate = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        context.Transactions.Add(transaction);
+        await context.SaveChangesAsync();
+
+        var persisted = await context.Transactions.AsNoTracking().SingleAsync(t => t.Id == transaction.Id);
+        var service = CreateService(context);
+
+        var updated = await service.UpdateAsync(new Transaction
+        {
+            Id = transaction.Id,
+            RowVersion = Array.Empty<byte>(),
+            CategoryId = category.Id,
+            Amount = 42.75m,
+            Description = "Updated",
+            TransactionDate = transaction.TransactionDate
+        });
+
+        Assert.Equal(UpdateOperationStatus.Conflict, updated.Status);
+        Assert.NotNull(updated.Conflict);
+        Assert.Contains("out of sync", updated.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Convert.ToHexString(persisted.RowVersion), updated.Conflict!.DatabaseValues.RowVersionHex);
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenAuditLoggingFails_StillPersistsTransaction()
     {
         await using var context = TestDbContextFactory.Create();
@@ -190,6 +228,122 @@ public class TransactionServiceTests
         var saved = await context.Transactions.AsNoTracking().SingleAsync();
         Assert.Equal(TestDataSeeder.DefaultUserId, saved.UserId);
         Assert.Equal(25m, saved.Amount);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_ReturnsCategoryVisualDataForLinkedCategory()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Travel", TransactionType.Expense);
+        category.IconKey = "flight";
+        category.ColorKey = "indigo";
+        context.Categories.Update(category);
+
+        context.Transactions.Add(new Transaction
+        {
+            UserId = TestDataSeeder.DefaultUserId,
+            CategoryId = category.Id,
+            Type = TransactionType.Expense,
+            Amount = 580m,
+            Description = "Flight ticket",
+            TransactionDate = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.GetPagedAsync(new TransactionListQuery { Page = 1, PageSize = 20 });
+
+        var row = Assert.Single(result.Items);
+        Assert.NotNull(row.Category);
+        Assert.Equal("flight", row.Category!.IconKey);
+        Assert.Equal("indigo", row.Category.ColorKey);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AfterCategoryVisualUpdate_ReturnsLatestCategoryVisuals()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Leisure", TransactionType.Expense);
+        category.IconKey = "movie";
+        category.ColorKey = "purple";
+        context.Categories.Update(category);
+
+        context.Transactions.Add(new Transaction
+        {
+            UserId = TestDataSeeder.DefaultUserId,
+            CategoryId = category.Id,
+            Type = TransactionType.Expense,
+            Amount = 320m,
+            Description = "Weekend plan",
+            TransactionDate = new DateTime(2026, 3, 12, 0, 0, 0, DateTimeKind.Utc),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        category.IconKey = "pets";
+        category.ColorKey = "rose";
+        context.Categories.Update(category);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.GetPagedAsync(new TransactionListQuery { Page = 1, PageSize = 20 });
+
+        var row = Assert.Single(result.Items);
+        Assert.NotNull(row.Category);
+        Assert.Equal("pets", row.Category!.IconKey);
+        Assert.Equal("rose", row.Category.ColorKey);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_OnlyReturnsCurrentUserCategoryVisuals()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var defaultCategory = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Food", TransactionType.Expense);
+        defaultCategory.IconKey = "restaurant";
+        defaultCategory.ColorKey = "emerald";
+        context.Categories.Update(defaultCategory);
+
+        var otherCategory = TestDataSeeder.EnsureCategory(context, OtherUserId, "Travel", TransactionType.Expense);
+        otherCategory.IconKey = "flight";
+        otherCategory.ColorKey = "red";
+        context.Categories.Update(otherCategory);
+
+        context.Transactions.AddRange(
+            new Transaction
+            {
+                UserId = TestDataSeeder.DefaultUserId,
+                CategoryId = defaultCategory.Id,
+                Type = TransactionType.Expense,
+                Amount = 75m,
+                Description = "Dinner",
+                TransactionDate = new DateTime(2026, 3, 8, 0, 0, 0, DateTimeKind.Utc),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            },
+            new Transaction
+            {
+                UserId = OtherUserId,
+                CategoryId = otherCategory.Id,
+                Type = TransactionType.Expense,
+                Amount = 150m,
+                Description = "Other tenant row",
+                TransactionDate = new DateTime(2026, 3, 9, 0, 0, 0, DateTimeKind.Utc),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context, TestDataSeeder.DefaultUserId);
+        var result = await service.GetPagedAsync(new TransactionListQuery { Page = 1, PageSize = 20 });
+
+        var row = Assert.Single(result.Items);
+        Assert.Equal(TestDataSeeder.DefaultUserId, row.UserId);
+        Assert.NotNull(row.Category);
+        Assert.Equal("restaurant", row.Category!.IconKey);
+        Assert.Equal("emerald", row.Category.ColorKey);
     }
 
     private static TransactionService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)

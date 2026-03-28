@@ -5,10 +5,25 @@
     const modalBody = document.getElementById("appModalBody");
     const modalTitle = document.getElementById("appModalLabel");
 
+    const MODAL_STATES = Object.freeze({
+        IDLE: "idle",
+        SUBMITTING: "submitting",
+        VALIDATION_ERROR: "validation_error",
+        CONFLICT: "conflict",
+        SUCCESS: "success",
+        ERROR: "error"
+    });
+    const SUBMIT_WARNING_TIMEOUT_MS = 12000;
+    const OVERWRITE_FIELD_NAME = "ForceOverwrite";
+    const FEEDBACK_STORAGE_KEY = "vizora:modal:feedback";
+
     let loadController = null;
     let submitController = null;
+    let submitWarningTimer = null;
     let lastTrigger = null;
     let validationScriptsPromise = null;
+    let modalState = MODAL_STATES.IDLE;
+    let lastSubmissionContext = null;
 
     const api = {
         initializeTransactionCreateForm,
@@ -110,6 +125,7 @@
     initializeTransactionCreateForm(document);
     initializeBudgetCreateForm(document);
     initializeCategoryIconPicker(document);
+    renderPersistedPageFeedback();
 
     if (!modalElement || !modalBody || !window.bootstrap || !window.bootstrap.Modal) {
         return;
@@ -124,14 +140,18 @@
     document.addEventListener("click", onDocumentClick);
     modalBody.addEventListener("submit", onModalFormSubmit);
     modalBody.addEventListener("click", onModalBodyClick);
+    setModalState(MODAL_STATES.IDLE);
 
     modalElement.addEventListener("hidden.bs.modal", () => {
         cancelLoadRequest();
         cancelSubmitRequest();
+        clearSubmitWarning();
+        lastSubmissionContext = null;
         modalBody.innerHTML = "";
         modalElement.removeAttribute("aria-busy");
         modalElement.classList.remove("vz-modal-size-sm", "vz-modal-size-md", "vz-modal-size-lg", "vz-modal-category");
         modalElement.classList.add("vz-modal-size-md");
+        setModalState(MODAL_STATES.IDLE);
 
         if (lastTrigger && typeof lastTrigger.focus === "function") {
             lastTrigger.focus();
@@ -165,12 +185,43 @@
 
     function onModalBodyClick(event) {
         const closeTrigger = event.target.closest("[data-modal-close='true']");
-        if (!closeTrigger) {
+        if (closeTrigger) {
+            event.preventDefault();
+            modal.hide();
             return;
         }
 
-        event.preventDefault();
-        modal.hide();
+        const retryTrigger = event.target.closest("[data-vz-modal-retry-submit='true']");
+        if (retryTrigger) {
+            event.preventDefault();
+            retryLastSubmission();
+            return;
+        }
+
+        const cancelRequestTrigger = event.target.closest("[data-vz-modal-cancel-request='true']");
+        if (cancelRequestTrigger) {
+            event.preventDefault();
+            cancelSubmitRequest();
+            setModalState(MODAL_STATES.ERROR);
+            showModalFeedback(
+                "Request canceled. You can retry or close this dialog.",
+                "warning",
+                true);
+            return;
+        }
+
+        const reloadPageTrigger = event.target.closest("[data-vz-modal-reload-page='true']");
+        if (reloadPageTrigger) {
+            event.preventDefault();
+            window.location.reload();
+            return;
+        }
+
+        const forceOverwriteTrigger = event.target.closest("[data-vz-modal-force-overwrite='true']");
+        if (forceOverwriteTrigger) {
+            event.preventDefault();
+            submitConflictOverwrite(forceOverwriteTrigger);
+        }
     }
 
     async function onModalFormSubmit(event) {
@@ -179,13 +230,26 @@
             return;
         }
 
+        if (modalState === MODAL_STATES.SUBMITTING) {
+            event.preventDefault();
+            return;
+        }
+
         event.preventDefault();
-        await submitModalForm(form);
+        if (form.dataset.vzForceOverwritePending !== "true") {
+            setHiddenFieldValue(form, OVERWRITE_FIELD_NAME, "false");
+        }
+
+        await submitModalForm(form, buildSubmissionContext(form));
+        delete form.dataset.vzForceOverwritePending;
     }
 
     async function openModalFromUrl(url, title) {
         cancelLoadRequest();
         cancelSubmitRequest();
+        clearSubmitWarning();
+        lastSubmissionContext = null;
+        setModalState(MODAL_STATES.IDLE);
 
         loadController = new AbortController();
         modalTitle.textContent = title;
@@ -203,74 +267,96 @@
                 signal: loadController.signal
             });
 
+            const html = await response.text();
             if (!response.ok) {
-                throw new Error("Failed to load modal form.");
+                throw new Error(html || "Failed to load modal form.");
             }
 
-            const html = await response.text();
-            modalBody.innerHTML = html;
-            await initializeModalContent(modalBody);
-            focusFirstInput(modalBody);
+            await applyModalHtml(html, response);
         } catch (error) {
             if (isAbortError(error)) {
                 return;
             }
 
+            setModalState(MODAL_STATES.ERROR);
             modalBody.innerHTML =
-                "<div class=\"alert alert-danger\" role=\"alert\">Unable to load the form. Please try again.</div>";
+                "<div class=\"alert alert-danger\" role=\"alert\" data-vz-modal-feedback='true'>" +
+                "<p class='mb-2'>Unable to load the form. Please try again.</p>" +
+                "<div class='d-flex flex-wrap gap-2'>" +
+                "<button type='button' class='btn btn-sm btn-outline-danger' data-vz-modal-reload-page='true'>Reload Page</button>" +
+                "<button type='button' class='btn btn-sm btn-outline-secondary' data-modal-close='true'>Close</button>" +
+                "</div>" +
+                "</div>";
         } finally {
             modalElement.removeAttribute("aria-busy");
             loadController = null;
         }
     }
 
-    async function submitModalForm(form) {
+    async function submitModalForm(form, submissionContext) {
+        if (modalState === MODAL_STATES.SUBMITTING) {
+            return;
+        }
+
         cancelSubmitRequest();
+        clearSubmitWarning();
         submitController = new AbortController();
+        lastSubmissionContext = submissionContext;
+        setModalState(MODAL_STATES.SUBMITTING);
 
         setFormSubmitting(form, true);
+        queueSubmitWarning();
 
         try {
-            const action = form.getAttribute("action") || window.location.href;
-            const method = (form.getAttribute("method") || "post").toUpperCase();
-            const formData = new FormData(form);
-
-            const response = await fetch(action, {
-                method,
+            const response = await fetch(submissionContext.action, {
+                method: submissionContext.method,
                 credentials: "same-origin",
                 headers: {
                     "X-Requested-With": "XMLHttpRequest"
                 },
-                body: formData,
+                body: materializeFormData(submissionContext.entries),
                 signal: submitController.signal
             });
 
             if (response.redirected) {
+                lastSubmissionContext = null;
+                setModalState(MODAL_STATES.SUCCESS);
                 modal.hide();
                 window.location.reload();
                 return;
             }
 
-            const html = await response.text();
-            modalBody.innerHTML = html;
-            await initializeModalContent(modalBody);
-            focusFirstInput(modalBody);
-        } catch (error) {
-            if (isAbortError(error)) {
+            const contentType = (response.headers.get("content-type") || "").toLowerCase();
+            if (contentType.includes("application/json")) {
+                const payload = await response.json();
+                await handleJsonSubmitResponse(payload);
                 return;
             }
 
-            const feedback = document.createElement("div");
-            feedback.className = "alert alert-danger";
-            feedback.setAttribute("role", "alert");
-            feedback.textContent = "Unable to submit the form. Please try again.";
-            modalBody.prepend(feedback);
+            const html = await response.text();
+            await applyModalHtml(html, response);
+            lastSubmissionContext = null;
+        } catch (error) {
+            if (isAbortError(error)) {
+                enableCurrentModalForm();
+                return;
+            }
+
+            setModalState(MODAL_STATES.ERROR);
+            showModalFeedback(
+                "Unable to submit the form due to a network or server error.",
+                "danger",
+                true);
         } finally {
+            clearSubmitWarning();
             if (form.isConnected) {
                 setFormSubmitting(form, false);
             }
 
             submitController = null;
+            if (modalState !== MODAL_STATES.SUCCESS) {
+                enableCurrentModalForm();
+            }
         }
     }
 
@@ -278,6 +364,7 @@
         initializeTransactionCreateForm(container);
         initializeBudgetCreateForm(container);
         initializeCategoryIconPicker(container);
+        initializeConflictResolution(container);
         synchronizeModalLayoutContext(container);
         await initializeClientValidation(container);
     }
@@ -318,6 +405,245 @@
         $form.removeData("validator");
         $form.removeData("unobtrusiveValidation");
         window.jQuery.validator.unobtrusive.parse(form);
+    }
+
+    async function applyModalHtml(html, response) {
+        modalBody.innerHTML = html;
+        await initializeModalContent(modalBody);
+        const fallbackState = resolveStateFromResponse(response);
+        const detectedState = resolveModalStateFromMarkup(modalBody, fallbackState);
+        setModalState(detectedState);
+        focusByModalState(modalBody, detectedState);
+    }
+
+    async function handleJsonSubmitResponse(payload) {
+        const status = typeof payload?.status === "string"
+            ? payload.status.trim().toLowerCase()
+            : "";
+
+        if (status !== "success") {
+            setModalState(MODAL_STATES.ERROR);
+            showModalFeedback(
+                payload?.message || "Submission failed. Please review the form and retry.",
+                "danger",
+                true);
+            return;
+        }
+
+        setModalState(MODAL_STATES.SUCCESS);
+        lastSubmissionContext = null;
+        modal.hide();
+        persistFeedbackAcrossReload(payload?.message || "Changes saved successfully.", "success");
+
+        if (typeof payload?.redirectUrl === "string" && payload.redirectUrl.length > 0) {
+            window.location.assign(payload.redirectUrl);
+            return;
+        }
+
+        if (payload?.reloadPage !== false) {
+            window.location.reload();
+        }
+    }
+
+    function resolveModalStateFromMarkup(container, fallbackState) {
+        const shell = container.querySelector("[data-vz-modal-shell='true']");
+        if (!(shell instanceof HTMLElement)) {
+            return fallbackState;
+        }
+
+        const state = normalizeModalState(shell.getAttribute("data-vz-modal-state"));
+        if (state === MODAL_STATES.IDLE && fallbackState !== MODAL_STATES.IDLE) {
+            return fallbackState;
+        }
+
+        return state;
+    }
+
+    function resolveStateFromResponse(response) {
+        const contractState = resolveStateFromResponseContract(response);
+        if (contractState !== MODAL_STATES.IDLE) {
+            return contractState;
+        }
+
+        return mapStatusToState(resolveStatusCode(response));
+    }
+
+    function resolveStateFromResponseContract(response) {
+        if (!response || !response.headers || typeof response.headers.get !== "function") {
+            return MODAL_STATES.IDLE;
+        }
+
+        const stateHeader = response.headers.get("X-Vizora-Modal-State");
+        const normalized = normalizeModalState(stateHeader);
+        return normalized;
+    }
+
+    function resolveStatusCode(response) {
+        if (typeof response === "number") {
+            return response;
+        }
+
+        if (response && typeof response.status === "number") {
+            return response.status;
+        }
+
+        return 200;
+    }
+
+    function mapStatusToState(statusCode) {
+        if (statusCode === 409) {
+            return MODAL_STATES.CONFLICT;
+        }
+
+        if (statusCode === 400 || statusCode === 422) {
+            return MODAL_STATES.VALIDATION_ERROR;
+        }
+
+        if (statusCode === 403 || statusCode === 404) {
+            return MODAL_STATES.ERROR;
+        }
+
+        if (statusCode >= 500) {
+            return MODAL_STATES.ERROR;
+        }
+
+        return MODAL_STATES.IDLE;
+    }
+
+    function normalizeModalState(value) {
+        const normalized = (value || "").trim().toLowerCase();
+        if (Object.values(MODAL_STATES).includes(normalized)) {
+            return normalized;
+        }
+
+        return MODAL_STATES.IDLE;
+    }
+
+    function setModalState(state) {
+        modalState = normalizeModalState(state);
+        if (modalElement instanceof HTMLElement) {
+            modalElement.setAttribute("data-vz-modal-state", modalState);
+        }
+    }
+
+    function buildSubmissionContext(form) {
+        const action = form.getAttribute("action") || window.location.href;
+        const method = (form.getAttribute("method") || "post").toUpperCase();
+        const entries = Array.from(new FormData(form).entries());
+        return { action, method, entries };
+    }
+
+    function materializeFormData(entries) {
+        const formData = new FormData();
+        entries.forEach(([key, value]) => {
+            formData.append(key, value);
+        });
+
+        return formData;
+    }
+
+    function queueSubmitWarning() {
+        clearSubmitWarning();
+        submitWarningTimer = window.setTimeout(() => {
+            if (modalState !== MODAL_STATES.SUBMITTING) {
+                return;
+            }
+
+            showModalFeedback(
+                "This request is taking longer than expected. You can retry, cancel, or reload.",
+                "warning",
+                true);
+        }, SUBMIT_WARNING_TIMEOUT_MS);
+    }
+
+    function clearSubmitWarning() {
+        if (submitWarningTimer) {
+            window.clearTimeout(submitWarningTimer);
+            submitWarningTimer = null;
+        }
+    }
+
+    function showModalFeedback(message, type, includeActions) {
+        modalBody.querySelectorAll("[data-vz-modal-feedback='true']").forEach((node) => node.remove());
+
+        const feedback = document.createElement("div");
+        feedback.className = `alert alert-${type}`;
+        feedback.setAttribute("role", "alert");
+        feedback.setAttribute("data-vz-modal-feedback", "true");
+
+        const messageElement = document.createElement("p");
+        messageElement.className = "mb-2";
+        messageElement.textContent = message;
+        feedback.appendChild(messageElement);
+
+        if (includeActions) {
+            const actions = document.createElement("div");
+            actions.className = "d-flex flex-wrap gap-2";
+
+            const retryButton = document.createElement("button");
+            retryButton.type = "button";
+            retryButton.className = "btn btn-sm btn-outline-primary";
+            retryButton.setAttribute("data-vz-modal-retry-submit", "true");
+            retryButton.textContent = "Retry";
+            actions.appendChild(retryButton);
+
+            const cancelButton = document.createElement("button");
+            cancelButton.type = "button";
+            cancelButton.className = "btn btn-sm btn-outline-secondary";
+            cancelButton.setAttribute("data-vz-modal-cancel-request", "true");
+            cancelButton.textContent = "Cancel Request";
+            actions.appendChild(cancelButton);
+
+            const reloadButton = document.createElement("button");
+            reloadButton.type = "button";
+            reloadButton.className = "btn btn-sm btn-outline-secondary";
+            reloadButton.setAttribute("data-vz-modal-reload-page", "true");
+            reloadButton.textContent = "Reload Page";
+            actions.appendChild(reloadButton);
+
+            feedback.appendChild(actions);
+        }
+
+        modalBody.prepend(feedback);
+    }
+
+    function retryLastSubmission() {
+        const activeForm = modalBody.querySelector("form");
+        if (!(activeForm instanceof HTMLFormElement)) {
+            return;
+        }
+
+        cancelSubmitRequest();
+        clearSubmitWarning();
+        setModalState(MODAL_STATES.IDLE);
+        const context = lastSubmissionContext || buildSubmissionContext(activeForm);
+        submitModalForm(activeForm, context);
+    }
+
+    function submitConflictOverwrite(trigger) {
+        const form = trigger.closest("form");
+        if (!(form instanceof HTMLFormElement)) {
+            return;
+        }
+
+        const overwriteFieldName =
+            trigger.getAttribute("data-vz-modal-overwrite-field") || OVERWRITE_FIELD_NAME;
+        const hiddenField = form.querySelector(`input[name='${overwriteFieldName}']`);
+        if (!(hiddenField instanceof HTMLInputElement)) {
+            return;
+        }
+
+        hiddenField.value = "true";
+        form.dataset.vzForceOverwritePending = "true";
+        const context = buildSubmissionContext(form);
+        submitModalForm(form, context);
+    }
+
+    function enableCurrentModalForm() {
+        const form = modalBody.querySelector("form");
+        if (form instanceof HTMLFormElement) {
+            setFormSubmitting(form, false);
+        }
     }
 
     function ensureValidationScriptsLoaded() {
@@ -734,6 +1060,29 @@
         return normalized;
     }
 
+    function initializeConflictResolution(container) {
+        const conflictRoots = container.querySelectorAll("[data-vz-modal-conflict-root='true']");
+        conflictRoots.forEach((root) => {
+            const confirm = root.querySelector("[data-vz-modal-overwrite-confirm='true']");
+            const overwriteButton = root.querySelector("[data-vz-modal-force-overwrite='true']");
+            if (!(overwriteButton instanceof HTMLButtonElement)) {
+                return;
+            }
+
+            if (!(confirm instanceof HTMLInputElement)) {
+                overwriteButton.disabled = false;
+                return;
+            }
+
+            const sync = () => {
+                overwriteButton.disabled = !confirm.checked;
+            };
+
+            confirm.addEventListener("change", sync);
+            sync();
+        });
+    }
+
     function focusFirstInput(container) {
         const firstInput = container.querySelector(
             "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
@@ -746,11 +1095,188 @@
         setTimeout(() => firstInput.focus(), 0);
     }
 
+    function focusByModalState(container, state) {
+        if (state === MODAL_STATES.CONFLICT) {
+            const conflictRoot = container.querySelector("[data-vz-modal-conflict-root='true']");
+            if (conflictRoot instanceof HTMLElement) {
+                setTimeout(() => conflictRoot.focus(), 0);
+                return;
+            }
+        }
+
+        if (state === MODAL_STATES.VALIDATION_ERROR) {
+            const validationSummary = findValidationSummary(container);
+            if (validationSummary instanceof HTMLElement) {
+                validationSummary.setAttribute("tabindex", "-1");
+                setTimeout(() => validationSummary.focus(), 0);
+                return;
+            }
+
+            const invalidField = findFirstInvalidField(container);
+            if (invalidField instanceof HTMLElement) {
+                setTimeout(() => invalidField.focus(), 0);
+                return;
+            }
+        }
+
+        focusFirstInput(container);
+    }
+
+    function findValidationSummary(container) {
+        const summaries = container.querySelectorAll(
+            ".validation-summary-errors, [data-vz-modal-validation-summary='true'], [data-valmsg-summary='true']"
+        );
+
+        for (const summary of summaries) {
+            if (!(summary instanceof HTMLElement)) {
+                continue;
+            }
+
+            if (summary.classList.contains("validation-summary-valid")) {
+                continue;
+            }
+
+            const listItems = Array.from(summary.querySelectorAll("li"))
+                .map((item) => item.textContent ? item.textContent.trim() : "")
+                .filter((text) => text.length > 0);
+
+            if (listItems.length > 0) {
+                return summary;
+            }
+
+            const summaryText = summary.textContent ? summary.textContent.trim() : "";
+            if (summaryText.length > 0) {
+                return summary;
+            }
+        }
+
+        return null;
+    }
+
+    function findFirstInvalidField(container) {
+        const invalidSelector = ".input-validation-error, [aria-invalid='true']";
+        const invalidFields = container.querySelectorAll(invalidSelector);
+        for (const field of invalidFields) {
+            if (!(field instanceof HTMLElement)) {
+                continue;
+            }
+
+            if (!isElementVisibleForFocus(field)) {
+                continue;
+            }
+
+            return field;
+        }
+
+        return null;
+    }
+
+    function isElementVisibleForFocus(element) {
+        if (element.closest("[hidden]")) {
+            return false;
+        }
+
+        if (element.getAttribute("aria-hidden") === "true") {
+            return false;
+        }
+
+        if (element instanceof HTMLInputElement && element.type === "hidden") {
+            return false;
+        }
+
+        const styles = window.getComputedStyle(element);
+        if (styles.display === "none" || styles.visibility === "hidden" || styles.opacity === "0") {
+            return false;
+        }
+
+        if (element.offsetParent === null && styles.position !== "fixed") {
+            return false;
+        }
+
+        return true;
+    }
+
     function setFormSubmitting(form, isSubmitting) {
+        form.setAttribute("aria-busy", isSubmitting ? "true" : "false");
+        form.classList.toggle("is-submitting", isSubmitting);
         const submitButtons = form.querySelectorAll("button[type='submit'], input[type='submit']");
         submitButtons.forEach((button) => {
             button.disabled = isSubmitting;
         });
+    }
+
+    function setHiddenFieldValue(form, fieldName, value) {
+        const field = form.querySelector(`input[name='${fieldName}']`);
+        if (field instanceof HTMLInputElement) {
+            field.value = value;
+        }
+    }
+
+    function persistFeedbackAcrossReload(message, type) {
+        if (typeof window.sessionStorage === "undefined") {
+            return;
+        }
+
+        try {
+            window.sessionStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify({
+                message,
+                type
+            }));
+        } catch {
+            // Ignore storage errors to avoid interrupting the submission flow.
+        }
+    }
+
+    function renderPersistedPageFeedback() {
+        if (typeof window.sessionStorage === "undefined") {
+            return;
+        }
+
+        let payload = null;
+        try {
+            payload = window.sessionStorage.getItem(FEEDBACK_STORAGE_KEY);
+            window.sessionStorage.removeItem(FEEDBACK_STORAGE_KEY);
+        } catch {
+            return;
+        }
+
+        if (!payload) {
+            return;
+        }
+
+        let parsed = null;
+        try {
+            parsed = JSON.parse(payload);
+        } catch {
+            return;
+        }
+
+        const message = typeof parsed?.message === "string" ? parsed.message.trim() : "";
+        if (!message) {
+            return;
+        }
+
+        const type = typeof parsed?.type === "string" ? parsed.type.trim().toLowerCase() : "success";
+        const normalizedType = type === "success" || type === "warning" || type === "danger" || type === "info"
+            ? type
+            : "success";
+
+        const feedback = document.createElement("div");
+        feedback.className = `alert alert-${normalizedType}`;
+        feedback.setAttribute("role", "status");
+        feedback.setAttribute("aria-live", "polite");
+        feedback.setAttribute("data-vz-page-feedback", "true");
+        feedback.textContent = message;
+
+        const host =
+            document.querySelector(".vz-main") ||
+            document.querySelector("main[role='main']") ||
+            document.querySelector("main") ||
+            document.body;
+
+        if (host instanceof HTMLElement) {
+            host.prepend(feedback);
+        }
     }
 
     function shouldInterceptClick(event, trigger) {

@@ -1,15 +1,26 @@
 @model Vizora.Models.TransactionUpsertViewModel
 @using System.Text.Json
+@using Vizora.Models
 
 @{
     var categoryTypeMapJson = JsonSerializer.Serialize(ViewData["CategoryTypeMap"] ?? new Dictionary<int, string>());
+    var conflictBanner = ViewData["ModalConflictBanner"] as ModalConflictBannerViewModel;
 }
 
 <form asp-action="Edit" method="post" data-modal-form="edit-transaction" class="vz-trx-modal-form">
-    <div asp-validation-summary="ModelOnly" class="text-danger vz-trx-modal-validation"></div>
+    <div asp-validation-summary="All"
+         class="alert alert-danger vz-modal-validation-summary vz-trx-modal-validation mb-0"
+         role="alert"
+         aria-live="assertive"
+         data-vz-modal-validation-summary="true"></div>
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="RowVersion" />
     <input type="hidden" asp-for="ForceOverwrite" />
+
+    @if (conflictBanner != null)
+    {
+        <partial name="~/Views/Shared/_ModalConflictBanner.cshtml" model="conflictBanner" />
+    }
 
     <div class="vz-trx-modal-field">
         <span id="transactionTypeLabel" class="vz-trx-modal-label">Transaction Type</span>
@@ -28,7 +39,7 @@
         <div class="vz-trx-modal-field">
             <label asp-for="TransactionDate" class="form-label vz-trx-modal-label"></label>
             <input asp-for="TransactionDate" class="form-control" type="date" />
-            <span asp-validation-for="TransactionDate" class="text-danger"></span>
+            <span asp-validation-for="TransactionDate" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
         </div>
 
         <div class="vz-trx-modal-field">
@@ -37,14 +48,14 @@
                 <span class="vz-trx-modal-amount-prefix" aria-hidden="true">PHP</span>
                 <input asp-for="Amount" class="form-control vz-trx-modal-amount-input" step="0.01" />
             </div>
-            <span asp-validation-for="Amount" class="text-danger"></span>
+            <span asp-validation-for="Amount" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
         </div>
     </div>
 
     <div class="vz-trx-modal-field">
         <label asp-for="Description" class="form-label vz-trx-modal-label"></label>
         <input asp-for="Description" class="form-control" placeholder="What was this for?" />
-        <span asp-validation-for="Description" class="text-danger"></span>
+        <span asp-validation-for="Description" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <div class="vz-trx-modal-field">
@@ -52,7 +63,7 @@
         <select asp-for="CategoryId" class="form-select" asp-items="ViewBag.CategoryId">
             <option value="">Select category</option>
         </select>
-        <span asp-validation-for="CategoryId" class="text-danger"></span>
+        <span asp-validation-for="CategoryId" class="text-danger vz-modal-field-validation" aria-live="polite"></span>
     </div>
 
     <input type="hidden" id="CategoryTypeMapJson" value='@categoryTypeMapJson' />

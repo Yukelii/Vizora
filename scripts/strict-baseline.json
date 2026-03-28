@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "requiredContextFiles": [
+    {
+      "label": "AGENTS.md",
+      "path": "AGENTS.md"
+    },
+    {
+      "label": "project-context.md",
+      "path": "docs/project-context.md"
+    },
+    {
+      "label": "architecture.md",
+      "path": "docs/architecture.md"
+    },
+    {
+      "label": "security-guardrails.md",
+      "path": "docs/security-guardrails.md"
+    },
+    {
+      "label": "domain-model.md",
+      "path": "docs/domain-model.md"
+    }
+  ],
+  "repoAlignment": {
+    "securityFindings": [
+      {
+        "id": "AUTH_ENUMERATION_MESSAGES",
+        "path": "Controllers/AuthController.cs",
+        "patterns": [
+          "Username is already taken.",
+          "Email is already in use."
+        ],
+        "minimumMatches": 2
+      },
+      {
+        "id": "EXPORT_ENDPOINT_IS_GET",
+        "path": "Controllers/ReportsController.cs",
+        "patterns": [
+          "public async Task<IActionResult> ExportTransactionsCsv([FromQuery] TransactionReportExportRequestDto request)"
+        ],
+        "minimumMatches": 1
+      },
+      {
+        "id": "DASHBOARD_EXTERNAL_CDN",
+        "path": "Views/Dashboard/Index.cshtml",
+        "patterns": [
+          "https://cdn.jsdelivr.net/npm/chart.js"
+        ],
+        "minimumMatches": 1
+      }
+    ],
+    "saasGaps": [
+      {
+        "id": "RECURRING_GENERATION_USER_SCOPED",
+        "path": "Services/RecurringTransactionService.cs",
+        "patterns": [
+          "public async Task<int> GenerateDueTransactionsAsync(DateTime? runUntilUtc = null)",
+          "var userId = _userContextService.GetRequiredUserId();"
+        ],
+        "minimumMatches": 2
+      }
+    ],
+    "repoHygiene": [
+      {
+        "id": "DOCS_IGNORED_IN_GITIGNORE",
+        "path": ".gitignore",
+        "patterns": [
+          "AGENTS.md",
+          "docs/",
+          "skills/",
+          "CODEX_INSTRUCTIONS.md"
+        ],
+        "minimumMatches": 4
+      }
+    ],
+    "dependencyState": {
+      "vulnerablePackages": false,
+      "outdatedPackagesAcknowledged": true
+    },
+    "testBuildStatus": {
+      "buildCommands": [
+        "dotnet build vizora.csproj",
+        "dotnet build tests/Vizora.Tests/Vizora.Tests.csproj"
+      ],
+      "testCommand": "dotnet test tests/Vizora.Tests/Vizora.Tests.csproj --no-build --blame-hang --blame-hang-timeout 60s -v minimal",
+      "baselinePassed": 78,
+      "baselineFailed": 0
+    }
+  }
+}

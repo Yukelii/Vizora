@@ -1,5 +1,5 @@
-using System.Globalization;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Vizora.DTOs;
@@ -42,10 +42,13 @@ namespace Vizora.Controllers
 
             var pagedTransactions = await _transactionService.GetPagedAsync(query);
             var categories = await _categoryService.GetAllAsync();
+            var transactionRows = pagedTransactions.Items
+                .Select(TransactionListItemViewModel.FromTransaction)
+                .ToList();
 
             var model = new TransactionsIndexViewModel
             {
-                Transactions = pagedTransactions.Items,
+                Transactions = transactionRows,
                 CategoryOptions = categories
                     .Select(c => new CategoryFilterOptionViewModel
                     {
@@ -102,6 +105,8 @@ namespace Vizora.Controllers
             // If validation fails, repopulate dependent dropdown state before returning the form.
             if (!ModelState.IsValid)
             {
+                this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                this.LogModalFailure(_logger, "transaction", model.Id, ModalFailureType.Validation);
                 await PopulateCategoryDropdownAsync(model.CategoryId);
                 return View(model);
             }
@@ -117,12 +122,24 @@ namespace Vizora.Controllers
             try
             {
                 await _transactionService.CreateAsync(transaction);
-                return RedirectToAction(nameof(Index));
+                return this.IsModalRequest()
+                    ? this.ModalSuccess()
+                    : RedirectToAction(nameof(Index));
             }
             catch (InvalidOperationException ex)
             {
                 // Service throws for user-scope and category validation failures.
+                this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                this.LogModalFailure(_logger, "transaction", model.Id, ModalFailureType.Validation);
                 ModelState.AddModelError(string.Empty, ex.Message);
+                await PopulateCategoryDropdownAsync(model.CategoryId);
+                return View(model);
+            }
+            catch (Exception ex)
+            {
+                this.SetModalStateAndStatus(ModalUiState.Error, StatusCodes.Status500InternalServerError);
+                this.LogModalFailure(_logger, "transaction", model.Id, ModalFailureType.Error, ex);
+                ModelState.AddModelError(string.Empty, "Unable to create transaction due to an unexpected error. Please try again.");
                 await PopulateCategoryDropdownAsync(model.CategoryId);
                 return View(model);
             }
@@ -152,6 +169,7 @@ namespace Vizora.Controllers
             };
 
             await PopulateCategoryDropdownAsync(model.CategoryId);
+            this.LogModalLifecycle(_logger, "transaction", id, "edit_form_loaded");
             return View(model);
         }
 
@@ -159,23 +177,62 @@ namespace Vizora.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int id, TransactionUpsertViewModel model)
         {
+            this.LogModalLifecycle(_logger, "transaction", id, "edit_submit_attempted");
+
             if (!model.Id.HasValue || id != model.Id.Value)
             {
+                if (this.IsModalRequest())
+                {
+                    this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Validation, renderedInModalResponse: true);
+                    return this.ModalError(
+                        "Unable to update transaction because the request did not match the selected record.",
+                        statusCode: StatusCodes.Status400BadRequest,
+                        outcome: ModalUiState.ValidationError,
+                        state: ModalUiState.ValidationError);
+                }
+
                 return NotFound();
+            }
+
+            // Missing/invalid tokens indicate an invalid edit session, not a true concurrency conflict.
+            ModelState.Remove(nameof(model.RowVersion));
+            if (!TryDecodeRowVersion(model.RowVersion, out var rowVersion))
+            {
+                const string invalidEditStateMessage = "This edit state is invalid or expired. Reload the latest values and try again.";
+                var latestTransaction = await _transactionService.GetByIdAsync(id);
+                if (latestTransaction == null)
+                {
+                    if (this.IsModalRequest())
+                    {
+                        this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error, renderedInModalResponse: true);
+                        return this.ModalError(
+                            "This transaction no longer exists or you no longer have access to it.",
+                            statusCode: StatusCodes.Status404NotFound,
+                            outcome: "not_found");
+                    }
+
+                    return NotFound();
+                }
+
+                this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Validation, renderedInModalResponse: true);
+                ModelState.AddModelError(
+                    string.Empty,
+                    invalidEditStateMessage);
+                model.RowVersion = Convert.ToHexString(latestTransaction.RowVersion);
+                model.ForceOverwrite = false;
+                ModelState.Remove(nameof(model.RowVersion));
+                ModelState.Remove(nameof(model.ForceOverwrite));
+                this.ClearModalConflictBanner();
+                await PopulateCategoryDropdownAsync(model.CategoryId);
+                return View(model);
             }
 
             // Keep form state intact when validation fails.
             if (!ModelState.IsValid)
             {
-                await PopulateCategoryDropdownAsync(model.CategoryId);
-                return View(model);
-            }
-
-            if (!TryDecodeRowVersion(model.RowVersion, out var rowVersion))
-            {
-                ModelState.AddModelError(
-                    string.Empty,
-                    "Unable to process the record version. Please reload and try again.");
+                this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Validation, renderedInModalResponse: true);
                 await PopulateCategoryDropdownAsync(model.CategoryId);
                 return View(model);
             }
@@ -196,11 +253,22 @@ namespace Vizora.Controllers
                 if (updateResult.Status == UpdateOperationStatus.NotFound)
                 {
                     // Not found is returned when the record is absent or not owned by the user.
+                    if (this.IsModalRequest())
+                    {
+                        this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error, renderedInModalResponse: true);
+                        return this.ModalError(
+                            "This transaction no longer exists or you no longer have access to it.",
+                            statusCode: StatusCodes.Status404NotFound,
+                            outcome: "not_found");
+                    }
+
                     return NotFound();
                 }
 
                 if (updateResult.Status == UpdateOperationStatus.ValidationFailed)
                 {
+                    this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                    this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Validation, renderedInModalResponse: true);
                     ModelState.AddModelError(string.Empty, updateResult.ErrorMessage ?? "Unable to update transaction.");
                     await PopulateCategoryDropdownAsync(model.CategoryId);
                     return View(model);
@@ -208,43 +276,56 @@ namespace Vizora.Controllers
 
                 if (updateResult.Status == UpdateOperationStatus.Conflict && updateResult.Conflict != null)
                 {
-                    if (IsModalRequest())
-                    {
-                        var categories = await _categoryService.GetAllAsync();
-                        return PartialView(
-                            "~/Views/Shared/_Modal.cshtml",
-                            new Dictionary<string, object?>
-                            {
-                                ["Size"] = "md",
-                                ["Variant"] = "details",
-                                ["BodyPartial"] = "~/Views/Shared/_ConcurrencyModal.cshtml",
-                                ["BodyModel"] = BuildTransactionConflictModalModel(id, updateResult.Conflict, categories)
-                            });
-                    }
-
+                    var categoryLookup = await BuildCategoryLookupAsync();
+                    this.SetModalStateAndStatus(ModalUiState.Conflict, StatusCodes.Status409Conflict);
+                    this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Concurrency, renderedInModalResponse: true);
                     model.RowVersion = updateResult.Conflict.DatabaseValues.RowVersionHex;
                     model.ForceOverwrite = false;
                     ModelState.Remove(nameof(model.RowVersion));
                     ModelState.Remove(nameof(model.ForceOverwrite));
-                    ModelState.AddModelError(
-                        string.Empty,
-                        updateResult.ErrorMessage ?? "This record was modified while you were editing.");
+                    this.SetModalConflictBanner(
+                        updateResult.ErrorMessage ?? "This record was modified while you were editing.",
+                        Url.Action(nameof(Edit), new { id }) ?? string.Empty,
+                        "Edit Transaction",
+                        BuildTransactionConflictComparisons(
+                            updateResult.Conflict.CurrentValues,
+                            updateResult.Conflict.DatabaseValues,
+                            categoryLookup),
+                        allowOverwrite: true);
                     await PopulateCategoryDropdownAsync(model.CategoryId);
                     return View(model);
                 }
 
                 if (updateResult.Status != UpdateOperationStatus.Success)
                 {
+                    this.SetModalStateAndStatus(ModalUiState.Error, StatusCodes.Status500InternalServerError);
+                    this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error, renderedInModalResponse: true);
                     ModelState.AddModelError(string.Empty, "Unable to update transaction.");
                     await PopulateCategoryDropdownAsync(model.CategoryId);
                     return View(model);
+                }
+
+                if (this.IsModalRequest())
+                {
+                    this.LogModalLifecycle(_logger, "transaction", id, "edit_submit_succeeded");
+                    return this.ModalSuccess("Transaction updated successfully.");
                 }
 
                 return RedirectToAction(nameof(Index));
             }
             catch (InvalidOperationException ex)
             {
+                this.SetModalStateAndStatus(ModalUiState.ValidationError, StatusCodes.Status400BadRequest);
+                this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Validation, renderedInModalResponse: true);
                 ModelState.AddModelError(string.Empty, ex.Message);
+                await PopulateCategoryDropdownAsync(model.CategoryId);
+                return View(model);
+            }
+            catch (Exception ex)
+            {
+                this.SetModalStateAndStatus(ModalUiState.Error, StatusCodes.Status500InternalServerError);
+                this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error, ex, renderedInModalResponse: true);
+                ModelState.AddModelError(string.Empty, "Unable to update transaction due to an unexpected error. Please try again.");
                 await PopulateCategoryDropdownAsync(model.CategoryId);
                 return View(model);
             }
@@ -270,13 +351,40 @@ namespace Vizora.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            var deleted = await _transactionService.DeleteAsync(id);
-            if (!deleted)
+            try
             {
-                return NotFound();
-            }
+                var deleted = await _transactionService.DeleteAsync(id);
+                if (!deleted)
+                {
+                    if (this.IsModalRequest())
+                    {
+                        this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error);
+                        return this.ModalError("This transaction no longer exists or you no longer have access to it.");
+                    }
 
-            return RedirectToAction(nameof(Index));
+                    return NotFound();
+                }
+
+                return this.IsModalRequest()
+                    ? this.ModalSuccess()
+                    : RedirectToAction(nameof(Index));
+            }
+            catch (Exception ex)
+            {
+                this.SetModalStateAndStatus(ModalUiState.Error, StatusCodes.Status500InternalServerError);
+                this.LogModalFailure(_logger, "transaction", id, ModalFailureType.Error, ex);
+                ModelState.AddModelError(string.Empty, "Unable to delete transaction due to an unexpected error. Please try again.");
+
+                var transaction = await _transactionService.GetByIdAsync(id);
+                if (transaction == null)
+                {
+                    return this.IsModalRequest()
+                        ? this.ModalError("Unable to load this transaction after the failed delete request.")
+                        : NotFound();
+                }
+
+                return View("Delete", transaction);
+            }
         }
 
         [HttpPost]
@@ -335,6 +443,81 @@ namespace Vizora.Controllers
             ViewData["CategoryTypeMap"] = categories.ToDictionary(c => c.Id, c => c.Type.ToString());
         }
 
+        private async Task<IReadOnlyDictionary<int, string>> BuildCategoryLookupAsync()
+        {
+            var categories = await _categoryService.GetAllAsync();
+            return categories.ToDictionary(
+                c => c.Id,
+                c => $"{c.Name} ({c.Type})");
+        }
+
+        private static IList<ConcurrencyFieldComparisonViewModel> BuildTransactionConflictComparisons(
+            TransactionConflictSnapshot currentValues,
+            TransactionConflictSnapshot latestValues,
+            IReadOnlyDictionary<int, string> categoryLookup)
+        {
+            return new List<ConcurrencyFieldComparisonViewModel>
+            {
+                new()
+                {
+                    FieldLabel = "Date",
+                    YourValue = currentValues.TransactionDate.Date.ToString("yyyy-MM-dd"),
+                    LatestValue = latestValues.TransactionDate.Date.ToString("yyyy-MM-dd")
+                },
+                new()
+                {
+                    FieldLabel = "Category",
+                    YourValue = ResolveCategoryLabel(currentValues.CategoryId, categoryLookup),
+                    LatestValue = ResolveCategoryLabel(latestValues.CategoryId, categoryLookup)
+                },
+                new()
+                {
+                    FieldLabel = "Amount",
+                    YourValue = currentValues.Amount.ToString("0.00"),
+                    LatestValue = latestValues.Amount.ToString("0.00")
+                },
+                new()
+                {
+                    FieldLabel = "Description",
+                    YourValue = string.IsNullOrWhiteSpace(currentValues.Description) ? "-" : currentValues.Description.Trim(),
+                    LatestValue = string.IsNullOrWhiteSpace(latestValues.Description) ? "-" : latestValues.Description.Trim()
+                }
+            };
+        }
+
+        private static TransactionConflictSnapshot ToConflictSnapshot(TransactionUpsertViewModel model)
+        {
+            return new TransactionConflictSnapshot
+            {
+                RowVersionHex = model.RowVersion ?? string.Empty,
+                CategoryId = model.CategoryId,
+                Amount = Math.Round(model.Amount, 2),
+                Description = model.Description,
+                TransactionDate = model.TransactionDate
+            };
+        }
+
+        private static TransactionConflictSnapshot ToConflictSnapshot(Transaction transaction)
+        {
+            return new TransactionConflictSnapshot
+            {
+                RowVersionHex = transaction.RowVersion != null && transaction.RowVersion.Length > 0
+                    ? Convert.ToHexString(transaction.RowVersion)
+                    : string.Empty,
+                CategoryId = transaction.CategoryId,
+                Amount = Math.Round(transaction.Amount, 2),
+                Description = transaction.Description,
+                TransactionDate = transaction.TransactionDate
+            };
+        }
+
+        private static string ResolveCategoryLabel(int categoryId, IReadOnlyDictionary<int, string> categoryLookup)
+        {
+            return categoryLookup.TryGetValue(categoryId, out var categoryName)
+                ? categoryName
+                : $"Category #{categoryId}";
+        }
+
         private static bool TryDecodeRowVersion(string? encodedRowVersion, out byte[] rowVersion)
         {
             rowVersion = Array.Empty<byte>();
@@ -355,72 +538,5 @@ namespace Vizora.Controllers
             }
         }
 
-        private bool IsModalRequest()
-        {
-            return string.Equals(
-                Request.Headers["X-Requested-With"],
-                "XMLHttpRequest",
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        private ConcurrencyModalViewModel BuildTransactionConflictModalModel(
-            int id,
-            ConcurrencyConflictResult<TransactionConflictSnapshot> conflict,
-            IReadOnlyList<Category> categories)
-        {
-            var current = conflict.CurrentValues;
-            var latest = conflict.DatabaseValues;
-            var categoryLookup = categories.ToDictionary(c => c.Id, c => c.Name);
-
-            var model = new ConcurrencyModalViewModel
-            {
-                EntityName = "transaction",
-                ReloadUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
-                ReloadModalTitle = "Edit Transaction",
-                OverwriteActionUrl = Url.Action(nameof(Edit), new { id }) ?? string.Empty,
-                OverwriteButtonLabel = "Overwrite"
-            };
-
-            model.FieldComparisons = new List<ConcurrencyFieldComparisonViewModel>
-            {
-                new()
-                {
-                    FieldLabel = "Category",
-                    YourValue = categoryLookup.GetValueOrDefault(current.CategoryId, "Unknown"),
-                    LatestValue = categoryLookup.GetValueOrDefault(latest.CategoryId, "Unknown")
-                },
-                new()
-                {
-                    FieldLabel = "Amount",
-                    YourValue = current.Amount.ToString("N2", CultureInfo.InvariantCulture),
-                    LatestValue = latest.Amount.ToString("N2", CultureInfo.InvariantCulture)
-                },
-                new()
-                {
-                    FieldLabel = "Description",
-                    YourValue = current.Description ?? "-",
-                    LatestValue = latest.Description ?? "-"
-                },
-                new()
-                {
-                    FieldLabel = "Transaction Date",
-                    YourValue = current.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    LatestValue = latest.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                }
-            };
-
-            model.HiddenFields = new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["Id"] = id.ToString(CultureInfo.InvariantCulture),
-                ["RowVersion"] = latest.RowVersionHex,
-                ["ForceOverwrite"] = bool.TrueString,
-                ["CategoryId"] = current.CategoryId.ToString(CultureInfo.InvariantCulture),
-                ["Amount"] = current.Amount.ToString(CultureInfo.InvariantCulture),
-                ["Description"] = current.Description ?? string.Empty,
-                ["TransactionDate"] = current.TransactionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-            };
-
-            return model;
-        }
     }
 }

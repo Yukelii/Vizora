@@ -4,12 +4,9 @@ set -euo pipefail
 readonly FORBIDDEN_REGEX='\b(Product|Products|Order|Orders|OrderItem|OrderItems|Sales|Inventory|Stock|SKU)\b'
 readonly GREP_FALLBACK_REGEX='(^|[^[:alnum:]_])(Product|Products|Order|Orders|OrderItem|OrderItems|Sales|Inventory|Stock|SKU)([^[:alnum:]_]|$)'
 readonly SQL_SYNTAX_ALLOWLIST_REGEX='(^|[^[:alnum:]_])(ORDER[[:space:]]+BY|GROUP[[:space:]]+BY|PARTITION[[:space:]]+BY)([^[:alnum:]_]|$)'
-readonly SCAN_DIRS=("Controllers" "Models" "Services" "Data")
+readonly SCAN_DIRS=("Controllers" "Models" "Services" "Views" "Data" "Migrations")
 readonly RG_EXCLUDE_GLOBS=(
     "--glob" "!**/*.sql"
-    "--glob" "!**/*.cshtml"
-    "--glob" "!**/*.razor"
-    "--glob" "!**/*.html"
     "--glob" "!**/*.css"
     "--glob" "!**/*.js"
     "--glob" "!**/*.ts"
@@ -18,9 +15,6 @@ readonly RG_EXCLUDE_GLOBS=(
 )
 readonly GREP_EXCLUDES=(
     "--exclude=*.sql"
-    "--exclude=*.cshtml"
-    "--exclude=*.razor"
-    "--exclude=*.html"
     "--exclude=*.css"
     "--exclude=*.js"
     "--exclude=*.ts"

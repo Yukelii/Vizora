@@ -109,12 +109,7 @@ namespace Vizora.Services
         {
             var userId = _userContextService.GetRequiredUserId();
             var normalizedName = NormalizeName(category.Name);
-
-            if (category.RowVersion == null || category.RowVersion.Length == 0)
-            {
-                return UpdateOperationResult<CategoryConflictSnapshot>.ValidationFailed(
-                    "This record was modified by another user. Please reload and try again.");
-            }
+            const string staleRecordMessage = "This record is out of sync. Reload the latest values and try again.";
 
             var existing = await _context.Categories
                 .FirstOrDefaultAsync(c => c.Id == category.Id && c.UserId == userId);
@@ -122,6 +117,18 @@ namespace Vizora.Services
             if (existing == null)
             {
                 return UpdateOperationResult<CategoryConflictSnapshot>.NotFound();
+            }
+
+            if (category.RowVersion == null || category.RowVersion.Length == 0)
+            {
+                var databaseSnapshot = ToConflictSnapshot(existing);
+                return UpdateOperationResult<CategoryConflictSnapshot>.ConflictDetected(
+                    new ConcurrencyConflictResult<CategoryConflictSnapshot>
+                    {
+                        CurrentValues = databaseSnapshot,
+                        DatabaseValues = databaseSnapshot
+                    },
+                    staleRecordMessage);
             }
 
             var normalizedIconKey = NormalizeAndValidateIconKey(category.IconKey);
@@ -172,8 +179,23 @@ namespace Vizora.Services
                         ex,
                         "Category update concurrency conflict had no category entry for CategoryId {CategoryId}.",
                         category.Id);
-                    return UpdateOperationResult<CategoryConflictSnapshot>.ValidationFailed(
-                        "This record was modified by another user. Please reload and try again.");
+                    var latestCategory = await _context.Categories
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.Id == category.Id && c.UserId == userId);
+
+                    if (latestCategory == null)
+                    {
+                        return UpdateOperationResult<CategoryConflictSnapshot>.NotFound();
+                    }
+
+                    var latestSnapshot = ToConflictSnapshot(latestCategory);
+                    return UpdateOperationResult<CategoryConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<CategoryConflictSnapshot>
+                        {
+                            CurrentValues = latestSnapshot,
+                            DatabaseValues = latestSnapshot
+                        },
+                        staleRecordMessage);
                 }
 
                 var databaseValues = await entry.GetDatabaseValuesAsync();

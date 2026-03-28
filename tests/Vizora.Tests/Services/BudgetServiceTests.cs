@@ -211,6 +211,45 @@ public class BudgetServiceTests
         Assert.False(originalRowVersion.AsSpan().SequenceEqual(reloaded.RowVersion));
     }
 
+    [Fact]
+    public async Task UpdateAsync_WithMissingRowVersion_ReturnsConflictWithReloadGuidance()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Housing", TransactionType.Expense);
+        var service = CreateService(context);
+
+        await service.CreateAsync(new BudgetUpsertRequest
+        {
+            CategoryId = category.Id,
+            PlannedAmount = 500m,
+            PeriodType = BudgetPeriodType.Monthly,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 31)
+        });
+
+        var budget = await context.Budgets
+            .AsNoTracking()
+            .Include(b => b.BudgetPeriod)
+            .SingleAsync();
+
+        var updated = await service.UpdateAsync(
+            budget.Id,
+            new BudgetUpsertRequest
+            {
+                RowVersion = Array.Empty<byte>(),
+                CategoryId = category.Id,
+                PlannedAmount = 650m,
+                PeriodType = BudgetPeriodType.Monthly,
+                StartDate = new DateTime(2026, 3, 1),
+                EndDate = new DateTime(2026, 3, 31)
+            });
+
+        Assert.Equal(UpdateOperationStatus.Conflict, updated.Status);
+        Assert.NotNull(updated.Conflict);
+        Assert.Contains("out of sync", updated.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Convert.ToHexString(budget.RowVersion), updated.Conflict!.DatabaseValues.RowVersionHex);
+    }
+
     private static BudgetService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)
     {
         return new BudgetService(

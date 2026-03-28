@@ -186,12 +186,7 @@ namespace Vizora.Services
         public async Task<UpdateOperationResult<TransactionConflictSnapshot>> UpdateAsync(Transaction transaction, bool forceOverwrite = false)
         {
             var userId = _userContextService.GetRequiredUserId();
-
-            if (transaction.RowVersion == null || transaction.RowVersion.Length == 0)
-            {
-                return UpdateOperationResult<TransactionConflictSnapshot>.ValidationFailed(
-                    "This record was modified by another user. Please reload and try again.");
-            }
+            const string staleRecordMessage = "This record is out of sync. Reload the latest values and try again.";
 
             var existing = await _context.Transactions
                 .FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == userId);
@@ -199,6 +194,18 @@ namespace Vizora.Services
             if (existing == null)
             {
                 return UpdateOperationResult<TransactionConflictSnapshot>.NotFound();
+            }
+
+            if (transaction.RowVersion == null || transaction.RowVersion.Length == 0)
+            {
+                var databaseSnapshot = ToConflictSnapshot(existing);
+                return UpdateOperationResult<TransactionConflictSnapshot>.ConflictDetected(
+                    new ConcurrencyConflictResult<TransactionConflictSnapshot>
+                    {
+                        CurrentValues = databaseSnapshot,
+                        DatabaseValues = databaseSnapshot
+                    },
+                    staleRecordMessage);
             }
 
             var incomingRowVersionHex = Convert.ToHexString(transaction.RowVersion);
@@ -245,8 +252,23 @@ namespace Vizora.Services
                         ex,
                         "Transaction update concurrency conflict had no transaction entry for TransactionId {TransactionId}.",
                         transaction.Id);
-                    return UpdateOperationResult<TransactionConflictSnapshot>.ValidationFailed(
-                        "This record was modified by another user. Please reload and try again.");
+                    var latestTransaction = await _context.Transactions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == userId);
+
+                    if (latestTransaction == null)
+                    {
+                        return UpdateOperationResult<TransactionConflictSnapshot>.NotFound();
+                    }
+
+                    var latestSnapshot = ToConflictSnapshot(latestTransaction);
+                    return UpdateOperationResult<TransactionConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<TransactionConflictSnapshot>
+                        {
+                            CurrentValues = latestSnapshot,
+                            DatabaseValues = latestSnapshot
+                        },
+                        staleRecordMessage);
                 }
 
                 var databaseValues = await entry.GetDatabaseValuesAsync();

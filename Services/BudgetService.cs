@@ -232,12 +232,7 @@ namespace Vizora.Services
             bool forceOverwrite = false)
         {
             var userId = _userContextService.GetRequiredUserId();
-
-            if (request.RowVersion == null || request.RowVersion.Length == 0)
-            {
-                return UpdateOperationResult<BudgetConflictSnapshot>.ValidationFailed(
-                    "This record was modified by another user. Please reload and try again.");
-            }
+            const string staleRecordMessage = "This record is out of sync. Reload the latest values and try again.";
 
             var budget = await _context.Budgets
                 .Include(b => b.BudgetPeriod)
@@ -246,6 +241,18 @@ namespace Vizora.Services
             if (budget == null)
             {
                 return UpdateOperationResult<BudgetConflictSnapshot>.NotFound();
+            }
+
+            if (request.RowVersion == null || request.RowVersion.Length == 0)
+            {
+                var databaseSnapshot = ToConflictSnapshot(budget, budget.BudgetPeriod);
+                return UpdateOperationResult<BudgetConflictSnapshot>.ConflictDetected(
+                    new ConcurrencyConflictResult<BudgetConflictSnapshot>
+                    {
+                        CurrentValues = databaseSnapshot,
+                        DatabaseValues = databaseSnapshot
+                    },
+                    staleRecordMessage);
             }
 
             var incomingRowVersionHex = Convert.ToHexString(request.RowVersion);
@@ -305,8 +312,24 @@ namespace Vizora.Services
                         ex,
                         "Budget update concurrency conflict had no budget entry for BudgetId {BudgetId}.",
                         id);
-                    return UpdateOperationResult<BudgetConflictSnapshot>.ValidationFailed(
-                        "This record was modified by another user. Please reload and try again.");
+                    var latestBudget = await _context.Budgets
+                        .AsNoTracking()
+                        .Include(b => b.BudgetPeriod)
+                        .FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+
+                    if (latestBudget == null)
+                    {
+                        return UpdateOperationResult<BudgetConflictSnapshot>.NotFound();
+                    }
+
+                    var latestSnapshot = ToConflictSnapshot(latestBudget, latestBudget.BudgetPeriod);
+                    return UpdateOperationResult<BudgetConflictSnapshot>.ConflictDetected(
+                        new ConcurrencyConflictResult<BudgetConflictSnapshot>
+                        {
+                            CurrentValues = latestSnapshot,
+                            DatabaseValues = latestSnapshot
+                        },
+                        staleRecordMessage);
                 }
 
                 var databaseValues = await entry.GetDatabaseValuesAsync();

@@ -1,10 +1,12 @@
 @model IDictionary<string, object?>
+@using Vizora.Models
 
 @{
     var bodyPartial = string.Empty;
     object? bodyModel = null;
     var size = "md";
     var variant = "form";
+    var state = ModalUiState.Idle;
 
     if (Model.TryGetValue("BodyPartial", out var bodyPartialValue))
     {
@@ -26,11 +28,19 @@
         variant = (variantValue?.ToString() ?? "form").Trim().ToLowerInvariant();
     }
 
+    if (Model.TryGetValue("State", out var stateValue))
+    {
+        state = ModalUiState.Normalize(stateValue?.ToString());
+    }
+
     var normalizedSize = size is "sm" or "md" or "lg" ? size : "md";
     var normalizedVariant = string.IsNullOrWhiteSpace(variant) ? "form" : variant;
 }
 
-<div class="vz-modal-shell vz-modal-variant-@normalizedVariant" data-vz-modal-size="@normalizedSize">
+<div class="vz-modal-shell vz-modal-variant-@normalizedVariant"
+     data-vz-modal-shell="true"
+     data-vz-modal-size="@normalizedSize"
+     data-vz-modal-state="@state">
     @if (!string.IsNullOrWhiteSpace(bodyPartial))
     {
         @await Html.PartialAsync(bodyPartial, bodyModel)

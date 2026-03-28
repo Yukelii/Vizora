@@ -22,7 +22,8 @@
             ["Size"] = "sm",
             ["Variant"] = "delete",
             ["BodyPartial"] = "~/Views/Categories/_DeleteConfirm.cshtml",
-            ["BodyModel"] = Model
+            ["BodyModel"] = Model,
+            ["State"] = ViewData["ModalState"]?.ToString() ?? "idle"
         })
 }
 else

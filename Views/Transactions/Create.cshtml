@@ -22,7 +22,8 @@
             ["Size"] = "md",
             ["Variant"] = "form",
             ["BodyPartial"] = "~/Views/Transactions/_CreateForm.cshtml",
-            ["BodyModel"] = Model
+            ["BodyModel"] = Model,
+            ["State"] = ViewData["ModalState"]?.ToString() ?? "idle"
         })
 }
 else

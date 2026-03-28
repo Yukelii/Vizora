@@ -2,7 +2,7 @@
 
 @{
     ViewData["Title"] = "Transactions";
-    var transactions = Model.Transactions?.ToList() ?? new List<Vizora.Models.Transaction>();
+    var transactions = Model.Transactions?.ToList() ?? new List<Vizora.Models.TransactionListItemViewModel>();
     var startDateValue = Model.StartDate?.ToString("yyyy-MM-dd");
     var endDateValue = Model.EndDate?.ToString("yyyy-MM-dd");
     var minAmountValue = Model.MinAmount?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -167,12 +167,8 @@
                         foreach (var item in transactions)
                         {
                             var descriptionText = string.IsNullOrWhiteSpace(item.Description) ? "-" : item.Description;
-                            var categoryName = string.IsNullOrWhiteSpace(item.Category?.Name)
-                                ? "Uncategorized"
-                                : item.Category!.Name;
+                            var categoryPresentation = item.CategoryPresentation;
                             var isIncome = item.Type == TransactionType.Income;
-                            var categoryIconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(item.Category?.IconKey);
-                            var categoryColorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(item.Category?.ColorKey);
                             var amountClass = isIncome ? "vz-trx-amount-income" : "vz-trx-amount-expense";
                             var typeClass = isIncome ? "vz-trx-chip-income" : "vz-trx-chip-expense";
                             <tr class="vz-trx-row">
@@ -181,10 +177,7 @@
                                     <span class="vz-trx-description" title="@descriptionText">@descriptionText</span>
                                 </td>
                                 <td>
-                                    <span class="vz-trx-chip vz-trx-chip-category vz-cat-color-@categoryColorKey">
-                                        <partial name="~/Views/Categories/_CategoryIconSvg.cshtml" model="categoryIconKey" />
-                                        @categoryName
-                                    </span>
+                                    <partial name="~/Views/Shared/_CategoryPresentationChip.cshtml" model="categoryPresentation" />
                                 </td>
                                 <td>
                                     <span class="vz-trx-chip @typeClass">

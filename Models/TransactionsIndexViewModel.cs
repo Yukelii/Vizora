@@ -2,7 +2,8 @@ namespace Vizora.Models
 {
     public class TransactionsIndexViewModel
     {
-        public IReadOnlyList<Transaction> Transactions { get; set; } = Array.Empty<Transaction>();
+        public IReadOnlyList<TransactionListItemViewModel> Transactions { get; set; } =
+            Array.Empty<TransactionListItemViewModel>();
 
         public IReadOnlyList<CategoryFilterOptionViewModel> CategoryOptions { get; set; } = Array.Empty<CategoryFilterOptionViewModel>();
 

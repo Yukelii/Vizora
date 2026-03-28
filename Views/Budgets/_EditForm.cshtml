@@ -1,10 +1,20 @@
 @model Vizora.Models.BudgetUpsertViewModel
+@using Vizora.Models
+
+@{
+    var conflictBanner = ViewData["ModalConflictBanner"] as ModalConflictBannerViewModel;
+}
 
 <form asp-action="Edit" method="post" data-modal-form="edit-budget">
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="RowVersion" />
     <input type="hidden" asp-for="ForceOverwrite" />
+
+    @if (conflictBanner != null)
+    {
+        <partial name="~/Views/Shared/_ModalConflictBanner.cshtml" model="conflictBanner" />
+    }
 
     <div class="mb-3">
         <label asp-for="CategoryId" class="form-label"></label>

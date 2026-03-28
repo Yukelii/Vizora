@@ -1,5 +1,6 @@
 param(
-    [string]$SolutionPath = "vizora.sln",
+    [string]$AppProjectPath = "vizora.csproj",
+    [string]$TestProjectPath = "tests/Vizora.Tests/Vizora.Tests.csproj",
     [int]$HangTimeoutSeconds = 60,
     [int]$SlowTestThresholdSeconds = 10,
     [int]$HighMemoryThresholdMb = 512
@@ -60,18 +61,26 @@ New-Item -ItemType Directory -Path $diagnosticsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 Remove-Item $diagLogPath, $consoleLogPath, $reportPath -ErrorAction SilentlyContinue
 
-Write-Host "Building solution: $SolutionPath"
+Write-Host "Building application project: $AppProjectPath"
 $buildStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-& dotnet build $SolutionPath
-$buildExitCode = $LASTEXITCODE
+& dotnet build $AppProjectPath
+$appBuildExitCode = $LASTEXITCODE
+if ($appBuildExitCode -ne 0) {
+    $buildStopwatch.Stop()
+    throw "dotnet build failed for application project with exit code $appBuildExitCode."
+}
+
+Write-Host "Building test project: $TestProjectPath"
+& dotnet build $TestProjectPath
+$testBuildExitCode = $LASTEXITCODE
 $buildStopwatch.Stop()
 
-if ($buildExitCode -ne 0) {
-    throw "dotnet build failed with exit code $buildExitCode."
+if ($testBuildExitCode -ne 0) {
+    throw "dotnet build failed for test project with exit code $testBuildExitCode."
 }
 
 $testArgs = @(
-    "test", $SolutionPath,
+    "test", $TestProjectPath,
     "--no-build",
     "--blame-hang",
     "--blame-hang-timeout", "${HangTimeoutSeconds}s",
@@ -262,7 +271,8 @@ $reportBuilder = New-Object System.Text.StringBuilder
 [void]$reportBuilder.AppendLine("# Test Performance Report")
 [void]$reportBuilder.AppendLine()
 [void]$reportBuilder.AppendLine("- Generated (UTC): $(Get-Date -Format u)")
-[void]$reportBuilder.AppendLine("- Solution: $SolutionPath")
+[void]$reportBuilder.AppendLine("- Application project: $AppProjectPath")
+[void]$reportBuilder.AppendLine("- Test project: $TestProjectPath")
 [void]$reportBuilder.AppendLine("- Build duration: $([Math]::Round($buildStopwatch.Elapsed.TotalSeconds, 2))s")
 [void]$reportBuilder.AppendLine("- Test execution duration: $([Math]::Round($testStopwatch.Elapsed.TotalSeconds, 2))s")
 [void]$reportBuilder.AppendLine("- Total tests discovered: $totalTests")

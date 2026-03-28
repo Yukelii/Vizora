@@ -22,7 +22,8 @@
             ["Size"] = "md",
             ["Variant"] = "details",
             ["BodyPartial"] = "~/Views/Budgets/_DetailsModal.cshtml",
-            ["BodyModel"] = Model
+            ["BodyModel"] = Model,
+            ["State"] = ViewData["ModalState"]?.ToString() ?? "idle"
         })
 }
 else

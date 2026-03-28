@@ -124,6 +124,30 @@ public class CategoryServiceTests
         Assert.False(originalRowVersion.AsSpan().SequenceEqual(reloaded.RowVersion));
     }
 
+    [Fact]
+    public async Task UpdateAsync_WithMissingRowVersion_ReturnsConflictWithReloadGuidance()
+    {
+        await using var context = TestDbContextFactory.Create();
+        var category = TestDataSeeder.EnsureCategory(context, TestDataSeeder.DefaultUserId, "Food", TransactionType.Expense);
+        var persisted = await context.Categories.AsNoTracking().SingleAsync(c => c.Id == category.Id);
+        var service = CreateService(context);
+
+        var updated = await service.UpdateAsync(new Category
+        {
+            Id = category.Id,
+            RowVersion = Array.Empty<byte>(),
+            Name = "Dining Out",
+            Type = TransactionType.Expense,
+            IconKey = persisted.IconKey,
+            ColorKey = persisted.ColorKey
+        });
+
+        Assert.Equal(UpdateOperationStatus.Conflict, updated.Status);
+        Assert.NotNull(updated.Conflict);
+        Assert.Contains("out of sync", updated.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Convert.ToHexString(persisted.RowVersion), updated.Conflict!.DatabaseValues.RowVersionHex);
+    }
+
     private static CategoryService CreateService(ApplicationDbContext context, string userId = TestDataSeeder.DefaultUserId)
     {
         return new CategoryService(

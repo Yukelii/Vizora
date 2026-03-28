@@ -1,0 +1,22 @@
+name: Strict Compliance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  strict-compliance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run strict preflight
+        shell: pwsh
+        run: ./scripts/strict-preflight.ps1 -Mode Strict

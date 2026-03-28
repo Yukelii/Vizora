@@ -78,22 +78,21 @@
                     <tbody>
                         @foreach (var item in categories)
                         {
-                            var iconKey = CategoryVisualCatalog.ResolveIconKeyOrDefault(item.IconKey);
-                            var colorKey = CategoryVisualCatalog.ResolveColorKeyOrDefault(item.ColorKey);
+                            var categoryPresentation = CategoryPresentationViewModel.FromCategory(item, item.Name);
                             var typeClass = item.Type == TransactionType.Income
                                 ? "vz-cat-badge-income"
                                 : "vz-cat-badge-expense";
                             <tr class="vz-cat-row">
                                 <td>
                                     <div class="vz-cat-name-cell">
-                                        <span class="vz-cat-icon-tile vz-cat-color-@colorKey" aria-hidden="true">
-                                            <partial name="_CategoryIconSvg" model="iconKey" />
+                                        <span class="vz-cat-icon-tile vz-cat-color-@categoryPresentation.ColorKey" aria-hidden="true">
+                                            <partial name="_CategoryIconSvg" model="categoryPresentation.IconKey" />
                                         </span>
 
                                         <div>
-                                            <span class="vz-cat-name">@item.Name</span>
+                                            <span class="vz-cat-name">@categoryPresentation.Name</span>
                                             <span class="vz-cat-meta">
-                                                @CategoryVisualCatalog.GetIconLabel(iconKey) &middot; @CategoryVisualCatalog.GetColorLabel(colorKey)
+                                                @categoryPresentation.IconLabel &middot; @categoryPresentation.ColorLabel
                                             </span>
                                         </div>
                                     </div>
